@@ -9,12 +9,12 @@ from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 import requests
 
-# Fix encodage console Windows
+# Fix d'encodage pour la console Windows / Linux
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding='utf-8')
 
 # ==============================================================================
-# CONFIGURATION & KEYWORDS KAUFMANN (AUCUNE LIMITATION DE RECHERCHE)
+# CONFIGURATION & MOTS-CLÉS DE RECHERCHE AUSBILDUNG KAUFMANN
 # ==============================================================================
 SPECIALITES_KAUFMANN = [
     "Kaufmann fuer Buromanagement",
@@ -22,10 +22,11 @@ SPECIALITES_KAUFMANN = [
     "Kaufmann im Gross- und Aussenhandelsmanagement",
     "Kaufmann fuer Spedition und Logistikdienstleistung",
     "Kaufmann fuer Tourismus und Freizeit",
-    "Kaufmann",  # Recherche générale Kaufmann / Ausbildung libre
-    "Ausbildung Kaufmann"
+    "Kaufmann",          # Recherche globale Kaufmann
+    "Ausbildung Kaufmann" # Recherche libre Ausbildung Kaufmann
 ]
 
+# Exclusion des domaines et faux emails (Trackers, Sentry, etc.)
 EXCLUDED_DOMAINS = [
     "sentry.io", "wixpress.com", "schema.org", "example.com", 
     "google.com", "facebook.com", "linkedin.com", "placeholder.com",
@@ -56,7 +57,7 @@ def get_random_headers():
     }
 
 # ==============================================================================
-# EXTRACTION STRICTE E-MAILS (ZÉRO INVENTIONS)
+# EXTRACTION STRICTE DES E-MAILS RH RÉELS (ZÉRO INVENTIONS)
 # ==============================================================================
 def clean_email(email):
     if not email:
@@ -134,17 +135,16 @@ def deep_scrape_company_site(company_url):
     return "Non détecté (Postuler via lien)"
 
 # ==============================================================================
-# SCRAPER PORTAILS ALLEMANDS (SANS RESTRICTION NI LIMITES DE NOMBRE)
+# SCRAPER PORTAILS ALLEMANDS (PAGINATION MULTIPLE)
 # ==============================================================================
 def scrape_german_portals():
     all_jobs = []
-    print("[+] Lancement du scraping massif des offres d'Ausbildung Kaufmann (Sans Limite)...")
+    print("[+] Lancement du scraping des offres d'Ausbildung Kaufmann...")
 
     for role in SPECIALITES_KAUFMANN:
-        print(f"\n[+] Recherche massive : {role}")
+        print(f"\n[+] Recherche : {role}")
         
-        # Scrape sur Ausbildung.de (Pagination / Recherche illimitée)
-        for page in range(1, 10): # Scrape jusqu'à 10 pages par spécialité
+        for page in range(1, 10): # Parcourt jusqu'à 10 pages par rôle
             search_url = f"https://www.ausbildung.de/suche/?q={role.replace(' ', '+')}&page={page}"
             try:
                 time.sleep(random.uniform(0.5, 1.0))
@@ -199,12 +199,28 @@ def scrape_german_portals():
 
     return all_jobs
 
+# ==============================================================================
+# ENVOI VERS GOOGLE SHEET VIA WEBHOOK & EXPORT CSV LOCAL
+# ==============================================================================
+def send_to_google_sheet_webhook(jobs):
+    webhook_url = os.environ.get("GOOGLE_SHEET_WEBHOOK_URL", "")
+    if not webhook_url:
+        print("[i] Aucun GOOGLE_SHEET_WEBHOOK_URL configuré. Enregistrement CSV uniquement.")
+        return
+    try:
+        res = requests.post(webhook_url, json=jobs, timeout=15)
+        if res.status_code == 200:
+            print("🚀 SUCCÈS WEBHOOK : Offres insérées directement dans ton Google Sheet !")
+        else:
+            print(f"[!] Code retour Webhook : {res.status_code}")
+    except Exception as e:
+        print(f"[!] Erreur d'envoi Webhook : {e}")
+
 def run_scraper_job():
     jobs = scrape_german_portals()
     filename = "ausbildung_applications_export.csv"
 
     if jobs:
-        # Fusionner avec les données existantes si le fichier CSV existe déjà
         existing_jobs = {}
         if os.path.exists(filename):
             try:
@@ -215,7 +231,6 @@ def run_scraper_job():
             except Exception:
                 pass
 
-        # Ajouter les nouvelles offres
         for j in jobs:
             if j["id"] not in existing_jobs:
                 existing_jobs[j["id"]] = j
@@ -227,20 +242,12 @@ def run_scraper_job():
             writer.writeheader()
             writer.writerows(existing_jobs.values())
         print(f"\n✅ SUCCÈS TOTAL : {len(existing_jobs)} offres au total enregistrées dans '{filename}'.")
+        
+        # Envoi au Webhook Google Sheet
+        send_to_google_sheet_webhook(jobs)
     else:
         print("\n[!] Aucune nouvelle offre récupérée lors de cette session.")
 
 if __name__ == "__main__":
-    # Mode Boucle d'automatisation toutes les 24 heures (86 400 secondes)
-    print("=== SCRAPER AUSBILDUNG KAUFMANN AUTOMATISÉ (CYCLE 24H) ===")
-    
-    # Premier lancement immédiat
+    print("=== SCRAPER AUSBILDUNG KAUFMANN (MODE CLOUD / GITHUB ACTIONS) ===")
     run_scraper_job()
-    
-    # Attente et relance automatique toutes les 24h
-    INTERVALLE_24H = 86400
-    while True:
-        print(f"\n⏳ Prochain scraping automatique dans 24 heures (ouvrira la session suivante)...")
-        time.sleep(INTERVALLE_24H)
-        print("\n⏰ 24 heures écoulées : Relance automatique du Scraper !")
-        run_scraper_job()
