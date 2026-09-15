@@ -2,7 +2,7 @@ name: Ausbildung Job Scraper
 
 on:
   schedule:
-    - cron: '0 3 * * *' # Tous les jours à 03h00 UTC
+    - - cron: '0 */2 * * *'
   workflow_dispatch: # Permet l'exécution manuelle
 
 jobs:
