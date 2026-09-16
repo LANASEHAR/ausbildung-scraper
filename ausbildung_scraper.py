@@ -1,7 +1,7 @@
 """
 ================================================================================
  AUSBILDUNG SCRAPER — MULTI-SOURCES ALLEMAGNE (VERSION PRODUCTION)
- Sources: Agentur für Arbeit API | Ausbildung.de | DuckDuckGo (Spontanées)
+ Sources: Agentur für Arbeit API (Principal) | DuckDuckGo (Spontanées avec Fallback)
  Logique: Deep Scraping /kontakt /impressum /karriere | Zéro Hallucination
  Output: Google Sheet via Webhook + CSV local de sauvegarde
 ================================================================================
@@ -30,7 +30,6 @@ if sys.platform == "win32":
 # CONFIGURATION CENTRALE
 # ==============================================================================
 
-# Spécialités Ausbildung Kaufmann ciblées (5 domaines)
 SPECIALITES = [
     ("Kaufmann/-frau für Büromanagement",                    "buero"),
     ("Kauffrau im E-Commerce",                               "ecommerce"),
@@ -39,7 +38,6 @@ SPECIALITES = [
     ("Kaufmann/-frau für Tourismus und Freizeit",            "tourismus"),
 ]
 
-# Domaines à exclure des emails extraits (parasites, trackers, images)
 EXCLUDED_EMAIL_DOMAINS = {
     "sentry.io", "wixpress.com", "schema.org", "example.com",
     "google.com", "facebook.com", "linkedin.com", "indeed.com",
@@ -48,41 +46,31 @@ EXCLUDED_EMAIL_DOMAINS = {
     "bundesagentur.de", "placeholder.com", "test.com", "example.de",
 }
 
-# Extensions d'images à exclure (faux emails type logo@banner.png)
 EXCLUDED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".pdf", ".zip"}
 
-# Préfixes d'emails systèmes à ignorer
 EXCLUDED_PREFIXES = {
     "noreply@", "no-reply@", "support@", "privacy@",
     "security@", "billing@", "admin@", "datenschutz@",
     "info-dse@", "newsletter@", "bounce@", "mailer-daemon@",
 }
 
-# Mots-clés indiquant un email RH prioritaire
 RH_KEYWORDS = [
     "bewerbung", "karriere", "ausbildung", "hr", "recruiting",
     "personal", "kontakt", "jobs", "ausbildungsbuero", "bewerber",
 ]
 
-# Pages à explorer sur chaque site d'entreprise (deep scraping)
 DEEP_PAGES = [
     "", "/kontakt", "/karriere", "/ausbildung", "/impressum",
     "/jobs", "/stellenangebote", "/ausbildung-bewerbung",
     "/en/contact", "/de/kontakt",
 ]
 
-# User-Agents réalistes pour éviter le blocage
 USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/605.1.15 "
-    "(KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:126.0) Gecko/20100101 Firefox/126.0",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
 ]
 
-# Regex email stricte
 EMAIL_REGEX = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}")
 
 
@@ -95,15 +83,12 @@ def get_headers(referer="https://www.google.de/"):
         "User-Agent": random.choice(USER_AGENTS),
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "de-DE,de;q=0.9,en-US;q=0.7,en;q=0.5",
-        "Accept-Encoding": "gzip, deflate, br",
         "Referer": referer,
         "DNT": "1",
         "Connection": "keep-alive",
     }
 
-
 def fetch(url, timeout=8, retries=2):
-    """Télécharge une page HTML avec gestion des erreurs et retries."""
     for attempt in range(retries):
         try:
             time.sleep(random.uniform(0.4, 1.2))
@@ -116,13 +101,7 @@ def fetch(url, timeout=8, retries=2):
             pass
     return None
 
-
 def clean_email(raw):
-    """
-    Nettoie et valide un email extrait.
-    Retourne None si invalide, tracker, image, etc.
-    ZERO HALLUCINATION : ne retourne que de vrais emails valides.
-    """
     if not raw:
         return None
     email = raw.strip().lower()
@@ -145,35 +124,21 @@ def clean_email(raw):
         return None
     return email
 
-
 def deobfuscate(text):
-    """Désobfusque les emails cachés dans le texte (techniques anti-spam courantes)."""
     patterns = [
-        (r"\s*\[at\]\s*",  "@"),
-        (r"\s*\(at\)\s*",  "@"),
-        (r"\s*\{at\}\s*",  "@"),
-        (r"\s+at\s+",      "@"),
-        (r"\s*\[dot\]\s*", "."),
-        (r"\s*\(dot\)\s*", "."),
-        (r"\s*\{dot\}\s*", "."),
-        (r"&#64;",         "@"),
-        (r"&#46;",         "."),
-        (r"%40",           "@"),
+        (r"\s*\[at\]\s*",  "@"), (r"\s*\(at\)\s*",  "@"),
+        (r"\s*\{at\}\s*",  "@"), (r"\s+at\s+",      "@"),
+        (r"\s*\[dot\]\s*", "."), (r"\s*\(dot\)\s*", "."),
+        (r"&#64;",         "@"), (r"&#46;",         "."),
     ]
     result = text
     for pattern, replacement in patterns:
         result = re.sub(pattern, replacement, result, flags=re.IGNORECASE)
     return result
 
-
 def extract_emails(html):
-    """
-    Extraction multi-méthodes d'emails depuis un HTML.
-    1. Désobfuscation  2. Regex texte brut  3. Liens mailto:  4. Attributs data-
-    """
     if not html:
         return set()
-
     clean_text = deobfuscate(html)
     raw_found = EMAIL_REGEX.findall(clean_text)
 
@@ -182,12 +147,7 @@ def extract_emails(html):
         for tag in soup.find_all("a", href=True):
             href = tag["href"]
             if href.lower().startswith("mailto:"):
-                mail_raw = href[7:].split("?")[0].strip()
-                raw_found.append(mail_raw)
-        for tag in soup.find_all(attrs={"data-email": True}):
-            raw_found.append(tag["data-email"])
-        for tag in soup.find_all(attrs={"data-mail": True}):
-            raw_found.append(tag["data-mail"])
+                raw_found.append(href[7:].split("?")[0].strip())
     except Exception:
         pass
 
@@ -198,17 +158,12 @@ def extract_emails(html):
             result.add(cleaned)
     return result
 
-
 def best_email(emails):
-    """Retourne le(s) email(s) RH les plus pertinents (max 2 séparés par ' / ')."""
     if not emails:
         return None
     ranked = sorted(
         emails,
-        key=lambda e: (
-            -sum(1 for kw in RH_KEYWORDS if kw in e),
-            len(e),
-        )
+        key=lambda e: (-sum(1 for kw in RH_KEYWORDS if kw in e), len(e))
     )
     return " / ".join(ranked[:2])
 
@@ -218,14 +173,8 @@ def best_email(emails):
 # ==============================================================================
 
 def deep_scrape_company(company_url):
-    """
-    Explore les pages clés d'un site d'entreprise pour trouver un email RH.
-    Visite: /, /kontakt, /karriere, /ausbildung, /impressum, /jobs
-    S'arrête dès qu'un email RH est trouvé.
-    """
     if not company_url or "http" not in company_url:
         return None
-
     parsed = urlparse(company_url)
     base_url = f"{parsed.scheme}://{parsed.netloc}"
     all_emails = set()
@@ -244,98 +193,32 @@ def deep_scrape_company(company_url):
 
     return best_email(all_emails) if all_emails else None
 
-
-def find_company_site_via_duckduckgo(company_name):
-    """Trouve le site officiel d'une entreprise via DuckDuckGo HTML."""
-    if not company_name or company_name.lower() in ("unternehmen deutschland", "n/a", ""):
-        return None
-
-    query = f"{company_name} Ausbildung Bewerbung Kontakt Deutschland"
-    url = f"https://html.duckduckgo.com/html/?q={quote_plus(query)}"
-    html = fetch(url, timeout=10)
-    if not html:
-        return None
-
-    try:
-        soup = BeautifulSoup(html, "lxml")
-        for result in soup.find_all("a", class_="result__a"):
-            href = result.get("href", "")
-            if not href or "http" not in href:
-                continue
-            parsed = urlparse(href)
-            domain = parsed.netloc.lower()
-            if any(skip in domain for skip in [
-                "linkedin", "facebook", "twitter", "xing", "youtube",
-                "indeed", "stepstone", "monster", "ausbildung.de",
-                "azubiyo", "wikipedia", "duckduckgo", "google",
-                "arbeitsagentur", "bundesagentur",
-            ]):
-                continue
-            if domain:
-                return f"{parsed.scheme}://{parsed.netloc}"
-    except Exception:
-        pass
-    return None
-
-
-def get_email_for_offer(offer_url, company_name, company_url=None):
-    """
-    Stratégie complète d'extraction d'email:
-    1. Page de l'offre → 2. Site de l'entreprise → 3. DuckDuckGo + deep scrape
-    """
-    # Étape 1 : Email sur la page de l'offre
-    html = fetch(offer_url, timeout=8)
-    if html:
-        emails = extract_emails(html)
-        if emails:
-            result = best_email(emails)
-            if result:
-                return result
-
-    # Étape 2 : Deep scraper le site connu
-    if company_url and "http" in str(company_url):
-        result = deep_scrape_company(company_url)
-        if result:
-            return result
-
-    # Étape 3 : Trouver via DuckDuckGo + deep scraper
-    site = find_company_site_via_duckduckgo(company_name)
-    if site:
-        result = deep_scrape_company(site)
-        if result:
-            return result
-
-    return None
-
-
 def make_job_id(url, source):
-    """Génère un ID unique déterministe pour éviter les doublons."""
     raw = f"{source}::{url}".encode("utf-8")
     return f"{source[:3].lower()}_{hashlib.md5(raw).hexdigest()[:8]}"
 
 
 # ==============================================================================
-# SOURCE 1 : AGENTUR FÜR ARBEIT — API REST OFFICIELLE (100% LÉGALE)
+# SOURCE 1 : AGENTUR FÜR ARBEIT — API REST OFFICIELLE (ZÉRO BLOCAGE)
 # ==============================================================================
 
 def scrape_arbeitsagentur_api():
-    """Interroge l'API REST de l'Arbeitsagentur (garantit des résultats sur GitHub Actions)."""
     jobs = []
     headers = {
         "User-Agent": "Jobsuche/2.9.2 (de.arbeitsagentur.jobsuche; iOS 17.4)",
         "X-API-Key": "jobsuche-api-ro-prod"
     }
     
-    print("\n[+] Interrogation de l'API Bundesagentur für Arbeit...")
-    for role in SPECIALITES_KAUFMANN:
-        api_url = f"https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v4/jobs?was={quote_plus(role)}&angebotsart=4&size=25"
+    print("\n[+] Interrogation de l'API Bundesagentur für Arbeit (Source fiable)...")
+    for role_name, role_id in SPECIALITES:
+        api_url = f"https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v4/jobs?was={quote_plus(role_name)}&angebotsart=4&size=25"
         try:
             res = requests.get(api_url, headers=headers, timeout=12)
             if res.status_code == 200:
                 items = res.json().get("stellenangebote", [])
-                print(f"    -> {role} : {len(items)} offres réelles détectées")
+                print(f"    -> {role_name} : {len(items)} offres réelles détectées")
                 for it in items:
-                    title = it.get("beruf", role)
+                    title = it.get("beruf", role_name)
                     company = it.get("arbeitgeber", "Unternehmen Deutschland")
                     ref_nr = it.get("refnr", "")
                     job_link = f"https://www.arbeitsagentur.de/jobsuche/jobdetail/{ref_nr}" if ref_nr else "https://www.arbeitsagentur.de"
@@ -344,228 +227,127 @@ def scrape_arbeitsagentur_api():
                     jobs.append({
                         "date_detection": time.strftime("%Y-%m-%d %H:%M"),
                         "statut": "NOUVEAU",
-                        "role_cible": role,
+                        "role_cible": role_name,
                         "intitule": title,
                         "entreprise": company,
                         "lieu": it.get("arbeitsort", {}).get("ort", "Deutschland"),
-                        "emails_rh": "Non détecté (Postuler via lien)",
+                        "emails_rh": "Non détecté (Postuler via lien)", 
                         "source": "Agentur für Arbeit API",
                         "lien": job_link,
                         "id": job_id
                     })
             else:
-                print(f"    [!] Erreur API {role} : Code {res.status_code}")
+                print(f"    [!] Erreur API {role_name} : Code {res.status_code}")
         except Exception as e:
-            print(f"    [!] Exception API {role} : {e}")
+            print(f"    [!] Exception API {role_name} : {e}")
             
     return jobs
 
-def send_to_google_sheet_webhook(jobs):
-    webhook_url = os.environ.get("GOOGLE_SHEET_WEBHOOK_URL", "")
-    if not webhook_url:
-        print("[i] Aucun GOOGLE_SHEET_WEBHOOK_URL configuré.")
-        return
-    try:
-        res = requests.post(webhook_url, json=jobs, timeout=15)
-        if res.status_code == 200:
-            print(f"🚀 SUCCÈS : {len(jobs)} offres transmises à Google Sheets !")
-        else:
-            print(f"[!] Erreur Webhook status: {res.status_code}")
-    except Exception as e:
-        print(f"[!] Erreur connexion Webhook: {e}")
-
-def run_scraper_job():
-    jobs = scrape_arbeitsagentur_api()
-    print(f"\nRÉSUMÉ : {len(jobs)} offres brutes collectées.")
-    
-    if jobs:
-        filename = "ausbildung_applications_export.csv"
-        existing = {}
-        if os.path.exists(filename):
-            try:
-                with open(filename, "r", encoding="utf-8-sig") as f:
-                    for row in csv.DictReader(f):
-                        existing[row["id"]] = row
-            except Exception:
-                pass
-        for j in jobs:
-            if j["id"] not in existing:
-                existing[j["id"]] = j
-                
-        fieldnames = ["date_detection", "statut", "role_cible", "intitule", "entreprise", "lieu", "emails_rh", "source", "lien", "id"]
-        with open(filename, "w", newline="", encoding="utf-8-sig") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(existing.values())
-            
-        send_to_google_sheet_webhook(jobs)
-    else:
-        print("[!] Aucune offre trouvée.")
-
-if __name__ == "__main__":
-    run_scraper_job()
 # ==============================================================================
-
-
-# ==============================================================================
-# SOURCE 3 : DUCKDUCKGO HTML — CANDIDATURES SPONTANÉES (ENTREPRISES DIRECTES)
+# SOURCE 2 : DUCKDUCKGO (CANDIDATURES SPONTANÉES)
 # ==============================================================================
 
 def scrape_spontaneous_via_duckduckgo():
-    """
-    Utilise DuckDuckGo HTML pour trouver des sites d'entreprises allemandes
-    recrutant en Ausbildung et proposant un email de contact direct.
-    """
-    print("\n[SOURCE 3] DuckDuckGo HTML -- Candidatures spontanees entreprises...")
+    print("\n[SOURCE 2] DuckDuckGo HTML -- Candidatures spontanees...")
     jobs = []
-
     QUERIES_SPONTANEES = [
-        ("Ausbildung Buromanagement Bewerbung Email Kontakt Unternehmen Deutschland 2025 2026", "Kaufmann/-frau für Büromanagement"),
-        ("Kaufmann E-Commerce Ausbildung Bewerbung Email Deutschland 2025 2026", "Kauffrau im E-Commerce"),
-        ("Ausbildung Spedition Logistik Kaufmann Bewerbung Email Kontakt 2025 2026", "Kaufmann/-frau für Spedition und Logistikdienstleistung"),
-        ("Ausbildung Gross Aussenhandel Kaufmann Stelle Email Kontakt", "Kaufmann/-frau im Groß- und Außenhandelsmanagement"),
-        ("Ausbildung Tourismus Reisebuero Kauffrau Email Bewerbung 2025 2026", "Kaufmann/-frau für Tourismus und Freizeit"),
-        ("Ausbildungsplatz frei Kaufmann Unternehmen Email Kontakt Deutschland 2026", "Kaufmann/-frau für Büromanagement"),
-        ("Ausbildung Kaufmann Mittelstand Bewerbung bewerbung@ Deutschland", "Kaufmann/-frau für Büromanagement"),
-        ("Ausbildungsplatz Buromanagement Hamburg Berlin Bewerbung Kontakt 2026", "Kaufmann/-frau für Büromanagement"),
-        ("Ausbildung Speditionskaufmann Hamburg Frankfurt bewerbung@ kontakt@", "Kaufmann/-frau für Spedition und Logistikdienstleistung"),
-        ("Kauffrau ECommerce Ausbildung Unternehmen Bewerbung info@", "Kauffrau im E-Commerce"),
+        ("Ausbildung Buromanagement Bewerbung Email Kontakt Unternehmen Deutschland 2025", "Kaufmann/-frau für Büromanagement"),
+        ("Kaufmann E-Commerce Ausbildung Bewerbung Email Deutschland 2025", "Kauffrau im E-Commerce"),
     ]
 
     for i, (query, specialite_cible) in enumerate(QUERIES_SPONTANEES):
-        print(f"  -> Requete {i+1}/{len(QUERIES_SPONTANEES)}: {query[:65]}...")
-
+        print(f"  -> Requete : {query[:65]}...")
         url = f"https://html.duckduckgo.com/html/?q={quote_plus(query)}&kl=de-de"
         html = fetch(url, timeout=12)
 
         if not html:
+            print("    [!] Bloqué par DuckDuckGo (Cloudflare). Ignoré.")
             continue
 
         try:
             soup = BeautifulSoup(html, "lxml")
-            results = soup.find_all("div", class_="result__body") or soup.find_all("div", class_=re.compile(r"result", re.I))
-
-            for result in results[:8]:
-                link_tag = result.find("a", class_=re.compile(r"result__a", re.I)) or result.find("a")
-                if not link_tag:
-                    continue
-
-                href = link_tag.get("href", "")
+            for result in soup.find_all("a", class_="result__a")[:5]:
+                href = result.get("href", "")
                 if not href or "http" not in href:
                     continue
 
                 parsed = urlparse(href)
                 domain = parsed.netloc.lower()
 
-                if any(skip in domain for skip in [
-                    "linkedin", "facebook", "twitter", "xing", "youtube",
-                    "indeed", "stepstone", "monster", "ausbildung.de",
-                    "azubiyo", "wikipedia", "duckduckgo", "google",
-                    "arbeitsagentur", "bundesagentur", "ausbildungsatlas",
-                ]):
+                if any(skip in domain for skip in ["linkedin", "indeed", "stepstone", "wikipedia"]):
                     continue
 
                 company_url = f"{parsed.scheme}://{parsed.netloc}"
-                company = domain.replace("www.", "").split(".")[0].title()
-
                 email = deep_scrape_company(company_url)
 
                 if not email:
-                    continue  # FILTRE STRICT
+                    continue
 
-                job_id = make_job_id(company_url, "sp")
                 jobs.append({
                     "date_detection": time.strftime("%Y-%m-%d %H:%M"),
                     "statut":         "NOUVEAU",
                     "role_cible":     specialite_cible,
                     "intitule":       f"Ausbildung {specialite_cible} - Candidature Spontanee",
-                    "entreprise":     company,
+                    "entreprise":     domain.replace("www.", "").split(".")[0].title(),
                     "lieu":           "Deutschland",
                     "emails_rh":      email,
                     "source":         "Candidature Spontanee (DuckDuckGo)",
                     "lien":           company_url,
-                    "id":             job_id,
+                    "id":             make_job_id(company_url, "sp"),
                 })
-                print(f"    OK SPON: {company[:35]:35s} -> {email}")
-
         except Exception as e:
-            print(f"    [!] Erreur parsing DDG: {e}")
+            pass
+        time.sleep(random.uniform(2.0, 4.0))
 
-        time.sleep(random.uniform(3.0, 6.0))
-
-    print(f"  -> Total Candidatures Spontanees : {len(jobs)} entreprises avec email valide")
     return jobs
 
-
 # ==============================================================================
-# DÉDUPLICATION & VALIDATION FINALE
+# DÉDUPLICATION & WEBHOOK
 # ==============================================================================
 
 def deduplicate(jobs, existing_ids=None):
-    """Supprime les doublons par ID unique. Filtre strict : email doit contenir '@'."""
     seen = set(existing_ids) if existing_ids else set()
     unique = []
     for job in jobs:
         jid = job.get("id", "")
         if jid and jid not in seen:
-            email = job.get("emails_rh", "")
-            if "@" in email:
-                seen.add(jid)
-                unique.append(job)
+            seen.add(jid)
+            unique.append(job)
     return unique
 
-
 def load_existing_ids(filename):
-    """Charge les IDs déjà présents dans le CSV local."""
     ids = set()
-    if not os.path.exists(filename):
-        return ids
-    try:
-        with open(filename, "r", encoding="utf-8-sig") as f:
-            for row in csv.DictReader(f):
-                if row.get("id"):
-                    ids.add(row["id"].strip())
-    except Exception:
-        pass
+    if os.path.exists(filename):
+        try:
+            with open(filename, "r", encoding="utf-8-sig") as f:
+                for row in csv.DictReader(f):
+                    if row.get("id"):
+                        ids.add(row["id"].strip())
+        except Exception:
+            pass
     return ids
 
-
-# ==============================================================================
-# ENVOI WEBHOOK → GOOGLE SHEET
-# ==============================================================================
-
 def send_to_webhook(jobs):
-    """Envoie les offres au webhook Google Apps Script (doPost). Lots de 50."""
     webhook_url = os.environ.get("GOOGLE_SHEET_WEBHOOK_URL", "").strip()
     if not webhook_url:
         print("\n[i] GOOGLE_SHEET_WEBHOOK_URL non configure -> CSV uniquement")
         return False
 
-    batch_size = 50
     success = True
-
-    for i in range(0, len(jobs), batch_size):
-        batch = jobs[i:i + batch_size]
+    for i in range(0, len(jobs), 50):
+        batch = jobs[i:i + 50]
         try:
-            resp = requests.post(
-                webhook_url,
-                json=batch,
-                headers={"Content-Type": "application/json"},
-                timeout=20,
-            )
+            resp = requests.post(webhook_url, json=batch, timeout=20)
             if resp.status_code == 200:
-                data = resp.json()
-                print(f"  Webhook lot {i // batch_size + 1} -> {data.get('added', '?')} offres ajoutees")
+                print(f"  Webhook OK : {len(batch)} offres ajoutees a Google Sheet")
             else:
-                print(f"  [!] Webhook lot {i // batch_size + 1} -> HTTP {resp.status_code}")
+                print(f"  [!] Webhook HTTP {resp.status_code}")
                 success = False
         except Exception as e:
             print(f"  [!] Erreur webhook: {e}")
             success = False
         time.sleep(1)
-
     return success
-
 
 # ==============================================================================
 # POINT D'ENTRÉE PRINCIPAL
@@ -574,76 +356,56 @@ def send_to_webhook(jobs):
 def main():
     print("=" * 70)
     print(" AUSBILDUNG SCRAPER -- MULTI-SOURCES ALLEMAGNE (VERSION PRODUCTION)")
-    print(f" Demarrage : {time.strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 70)
 
     CSV_FILENAME = "ausbildung_applications_export.csv"
-    FIELDNAMES = [
-        "date_detection", "statut", "role_cible", "intitule",
-        "entreprise", "lieu", "emails_rh", "source", "lien", "id"
-    ]
-
     existing_ids = load_existing_ids(CSV_FILENAME)
-    print(f"\n[i] IDs existants charges depuis CSV : {len(existing_ids)}")
-
+    
     all_new_jobs = []
 
-    # Source 1 : Agentur für Arbeit
+    # Source 1 : API Agentur für Arbeit (100% fiable)
     try:
-        all_new_jobs.extend(scrape_agentur_fuer_arbeit())
+        all_new_jobs.extend(scrape_arbeitsagentur_api())
     except Exception as e:
         print(f"[!] Source BA echouee: {e}")
 
-    # Source 2 : Ausbildung.de
-    try:
-        all_new_jobs.extend(scrape_ausbildung_de())
-    except Exception as e:
-        print(f"[!] Source Ausbildung.de echouee: {e}")
-
-    # Source 3 : DuckDuckGo
+    # Source 2 : DuckDuckGo (Peut être bloqué par GitHub Actions)
     try:
         all_new_jobs.extend(scrape_spontaneous_via_duckduckgo())
     except Exception as e:
         print(f"[!] Source DuckDuckGo echouee: {e}")
 
+    # Déduplication
     unique_new = deduplicate(all_new_jobs, existing_ids)
 
     print(f"\n{'=' * 70}")
-    print(f" RESUME : {len(all_new_jobs)} offres brutes -> {len(unique_new)} offres uniques avec email valide")
+    print(f" RESUME : {len(all_new_jobs)} offres detectees -> {len(unique_new)} nouvelles offres a envoyer")
     print(f"{'=' * 70}")
 
     if not unique_new:
-        print("\n[!] Aucune nouvelle offre avec email valide. Fin du scraper.")
+        print("\n[!] Aucune nouvelle offre. Fin du scraper.")
         return
 
-    # Sauvegarde CSV local
+    # Sauvegarde CSV
+    fieldnames = ["date_detection", "statut", "role_cible", "intitule", "entreprise", "lieu", "emails_rh", "source", "lien", "id"]
     existing_rows = {}
     if os.path.exists(CSV_FILENAME):
         try:
             with open(CSV_FILENAME, "r", encoding="utf-8-sig") as f:
                 for row in csv.DictReader(f):
-                    if row.get("id"):
-                        existing_rows[row["id"]] = row
-        except Exception:
-            pass
+                    existing_rows[row["id"]] = row
+        except Exception: pass
 
     for job in unique_new:
         existing_rows[job["id"]] = job
 
     with open(CSV_FILENAME, "w", newline="", encoding="utf-8-sig") as f:
-        writer = csv.DictWriter(f, fieldnames=FIELDNAMES, extrasaction="ignore")
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(existing_rows.values())
 
-    print(f"\n[OK] CSV mis a jour : {len(existing_rows)} offres totales dans '{CSV_FILENAME}'")
-
-    # Envoi Webhook Google Sheet
-    print(f"\n[>>] Envoi de {len(unique_new)} nouvelles offres vers Google Sheet...")
+    # Envoi Webhook
     send_to_webhook(unique_new)
-
-    print(f"\n[FIN] Scraper termine a {time.strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"      Nouvelles offres envoyees : {len(unique_new)}")
-
 
 if __name__ == "__main__":
     main()
