@@ -318,101 +318,92 @@ def make_job_id(url, source):
 # SOURCE 1 : AGENTUR FÜR ARBEIT — API REST OFFICIELLE (100% LÉGALE)
 # ==============================================================================
 
-def scrape_agentur_fuer_arbeit():
-    """
-    Scrape l'API officielle et publique de l'Agentur für Arbeit.
-    Endpoint: https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v4/jobs
-    Pagination complète jusqu'à épuisement des offres.
-    """
-    print("\n[SOURCE 1] Agentur fur Arbeit -- API REST officielle...")
+def scrape_arbeitsagentur_api():
+    """Interroge l'API REST de l'Arbeitsagentur (garantit des résultats sur GitHub Actions)."""
     jobs = []
-
-    API_BASE = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v4/jobs"
-    API_HEADERS = {
-        "User-Agent": "Jobsuche/2.9.2 (compatible)",
-        "X-API-Key": "jobboerse-jobsuche",
-        "Accept": "application/json",
-        "Accept-Language": "de-DE",
+    headers = {
+        "User-Agent": "Jobsuche/2.9.2 (de.arbeitsagentur.jobsuche; iOS 17.4)",
+        "X-API-Key": "jobsuche-api-ro-prod"
     }
-
-    for specialite, tag in SPECIALITES:
-        print(f"  -> Specialite: {specialite}")
-        page = 0
-        page_size = 50
-        total_found = 0
-
-        while True:
-            params = {
-                "was": specialite,
-                "wo": "Deutschland",
-                "angebotsart": 4,  # 4 = Ausbildung
-                "page": page,
-                "size": page_size,
-                "umkreis": 200,
-            }
-
-            try:
-                time.sleep(random.uniform(0.8, 1.5))
-                resp = requests.get(API_BASE, params=params, headers=API_HEADERS, timeout=10)
-
-                if resp.status_code != 200:
-                    print(f"    [!] HTTP {resp.status_code} -- arret pagination")
-                    break
-
-                data = resp.json()
-                stellenangebote = data.get("stellenangebote", [])
-
-                if not stellenangebote:
-                    print(f"    OK Fin pagination (page {page}) -- {total_found} offres trouvees")
-                    break
-
-                for offer in stellenangebote:
-                    title      = offer.get("titel", "").strip()
-                    company    = (offer.get("arbeitgeber") or "Unternehmen Deutschland").strip()
-                    ref_number = offer.get("refnr", "")
-                    location   = offer.get("arbeitsort", {})
-                    city       = location.get("ort", "Deutschland")
-                    plz        = location.get("plz", "")
-                    offer_url  = f"https://www.arbeitsagentur.de/jobsuche/jobdetail/{ref_number}"
-                    company_url = offer.get("arbeitgeberUrl", "") or ""
-
-                    email = get_email_for_offer(offer_url, company, company_url if "http" in str(company_url) else None)
-
-                    if not email:
-                        continue  # FILTRE STRICT : pas d'email = pas de ligne
-
-                    job_id = make_job_id(ref_number or offer_url, "ba")
+    
+    print("\n[+] Interrogation de l'API Bundesagentur für Arbeit...")
+    for role in SPECIALITES_KAUFMANN:
+        api_url = f"https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v4/jobs?was={quote_plus(role)}&angebotsart=4&size=25"
+        try:
+            res = requests.get(api_url, headers=headers, timeout=12)
+            if res.status_code == 200:
+                items = res.json().get("stellenangebote", [])
+                print(f"    -> {role} : {len(items)} offres réelles détectées")
+                for it in items:
+                    title = it.get("beruf", role)
+                    company = it.get("arbeitgeber", "Unternehmen Deutschland")
+                    ref_nr = it.get("refnr", "")
+                    job_link = f"https://www.arbeitsagentur.de/jobsuche/jobdetail/{ref_nr}" if ref_nr else "https://www.arbeitsagentur.de"
+                    job_id = f"aa_{ref_nr}" if ref_nr else f"aa_{hashlib.md5(title.encode()).hexdigest()[:8]}"
+                    
                     jobs.append({
                         "date_detection": time.strftime("%Y-%m-%d %H:%M"),
-                        "statut":         "NOUVEAU",
-                        "role_cible":     specialite,
-                        "intitule":       title or specialite,
-                        "entreprise":     company,
-                        "lieu":           f"{plz} {city}".strip() if plz else city,
-                        "emails_rh":      email,
-                        "source":         "Agentur fur Arbeit",
-                        "lien":           offer_url,
-                        "id":             job_id,
+                        "statut": "NOUVEAU",
+                        "role_cible": role,
+                        "intitule": title,
+                        "entreprise": company,
+                        "lieu": it.get("arbeitsort", {}).get("ort", "Deutschland"),
+                        "emails_rh": "Non détecté (Postuler via lien)",
+                        "source": "Agentur für Arbeit API",
+                        "lien": job_link,
+                        "id": job_id
                     })
-                    print(f"    OK BA: {company[:35]:35s} -> {email}")
-                    total_found += 1
-
-                total_treffer = data.get("maxErgebnisse", 0)
-                if (page + 1) * page_size >= total_treffer:
-                    break
-                page += 1
-
-            except requests.exceptions.RequestException as e:
-                print(f"    [!] Erreur reseau BA: {e}")
-                break
-            except Exception as e:
-                print(f"    [!] Erreur BA: {e}")
-                break
-
-    print(f"  -> Total Agentur fur Arbeit : {len(jobs)} offres avec email valide")
+            else:
+                print(f"    [!] Erreur API {role} : Code {res.status_code}")
+        except Exception as e:
+            print(f"    [!] Exception API {role} : {e}")
+            
     return jobs
 
+def send_to_google_sheet_webhook(jobs):
+    webhook_url = os.environ.get("GOOGLE_SHEET_WEBHOOK_URL", "")
+    if not webhook_url:
+        print("[i] Aucun GOOGLE_SHEET_WEBHOOK_URL configuré.")
+        return
+    try:
+        res = requests.post(webhook_url, json=jobs, timeout=15)
+        if res.status_code == 200:
+            print(f"🚀 SUCCÈS : {len(jobs)} offres transmises à Google Sheets !")
+        else:
+            print(f"[!] Erreur Webhook status: {res.status_code}")
+    except Exception as e:
+        print(f"[!] Erreur connexion Webhook: {e}")
 
+def run_scraper_job():
+    jobs = scrape_arbeitsagentur_api()
+    print(f"\nRÉSUMÉ : {len(jobs)} offres brutes collectées.")
+    
+    if jobs:
+        filename = "ausbildung_applications_export.csv"
+        existing = {}
+        if os.path.exists(filename):
+            try:
+                with open(filename, "r", encoding="utf-8-sig") as f:
+                    for row in csv.DictReader(f):
+                        existing[row["id"]] = row
+            except Exception:
+                pass
+        for j in jobs:
+            if j["id"] not in existing:
+                existing[j["id"]] = j
+                
+        fieldnames = ["date_detection", "statut", "role_cible", "intitule", "entreprise", "lieu", "emails_rh", "source", "lien", "id"]
+        with open(filename, "w", newline="", encoding="utf-8-sig") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(existing.values())
+            
+        send_to_google_sheet_webhook(jobs)
+    else:
+        print("[!] Aucune offre trouvée.")
+
+if __name__ == "__main__":
+    run_scraper_job()
 # ==============================================================================
 
 
