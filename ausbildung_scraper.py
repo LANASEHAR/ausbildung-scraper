@@ -3,7 +3,8 @@ import os
 import random
 import re
 import time
-from urllib.parse import urljoin
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from urllib.parse import quote_plus, urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -32,6 +33,14 @@ WEBHOOK_TIMEOUT = 120
 WEBHOOK_RETRIES = 3
 DETAIL_DELAY = (0.20, 0.55)
 
+# Deep public-email search for companies where the BA offer does not expose an email.
+DEEP_SEARCH = True
+DEEP_SEARCH_WORKERS = 4
+DEEP_SEARCH_TIMEOUT = 12
+DEEP_SEARCH_MAX_COMPANIES = 1400
+DEEP_SEARCH_MAX_SITE_PAGES = 5
+DEEP_SEARCH_DELAY = (0.35, 0.90)
+
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/17.5 Safari/605.1.15",
@@ -40,6 +49,16 @@ USER_AGENTS = [
 
 EMAIL_RE = re.compile(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", re.I)
 JOB_LINK_RE = re.compile(r"/jobsuche/jobdetail/", re.I)
+BAD_EMAIL_DOMAINS = {
+    "arbeitsagentur.de", "example.com", "example.org", "example.net",
+}
+BAD_SITE_DOMAINS = {
+    "arbeitsagentur.de", "indeed.com", "stepstone.de", "linkedin.com",
+    "xing.com", "meinestadt.de", "azubiyo.de", "ausbildung.de",
+    "jobware.de", "monster.de", "kimeta.de", "stellenanzeigen.de",
+    "jobvector.de", "hokify.de", "jobisjob.de", "glassdoor.de",
+}
+CONTACT_WORDS = ("kontakt", "contact", "impressum", "ansprechpartner", "karriere", "bewerbung")
 
 
 def make_session():
@@ -61,7 +80,8 @@ def clean(value):
 def first_email(text):
     for email in EMAIL_RE.findall(text or ""):
         email = email.lower().rstrip(".,;:")
-        if not email.endswith("@arbeitsagentur.de"):
+        domain = email.split("@", 1)[-1]
+        if domain not in BAD_EMAIL_DOMAINS and not email.endswith("@arbeitsagentur.de"):
             return email
     return ""
 
@@ -230,8 +250,155 @@ def parse_detail(link):
         time.sleep(random.uniform(*DETAIL_DELAY))
 
 
+def normalize_company(name):
+    name = clean(name)
+    name = re.sub(r"\b(GmbH|AG|KG|OHG|e\.K\.|GmbH & Co\. KG|UG|SE|mbH)\b", " ", name, flags=re.I)
+    return clean(name)
+
+
+def domain_is_bad(url):
+    try:
+        host = urlparse(url).netloc.lower().split(":")[0]
+        if host.startswith("www."):
+            host = host[4:]
+        return any(host == d or host.endswith("." + d) for d in BAD_SITE_DOMAINS)
+    except Exception:
+        return True
+
+
+def likely_official_site(url, company):
+    if not url.startswith(("http://", "https://")) or domain_is_bad(url):
+        return False
+    host = urlparse(url).netloc.lower()
+    company_tokens = re.findall(r"[a-z0-9]{3,}", normalize_company(company).lower())
+    host_tokens = re.findall(r"[a-z0-9]{3,}", host)
+    if not company_tokens:
+        return True
+    overlap = sum(1 for token in company_tokens if any(token in h or h in token for h in host_tokens))
+    return overlap >= 1
+
+
+def search_official_site(session, company, location=""):
+    company_clean = normalize_company(company)
+    if not company_clean or company_clean in {"à vérifier", "entreprise non indiquée"}:
+        return ""
+
+    queries = [
+        f'"{company_clean}" Kontakt Impressum E-Mail',
+        f'"{company_clean}" Kontakt',
+    ]
+    for query in queries:
+        try:
+            url = "https://www.google.com/search?q=" + quote_plus(query) + "&num=10&hl=de"
+            r = session.get(url, timeout=DEEP_SEARCH_TIMEOUT)
+            r.raise_for_status()
+            soup = BeautifulSoup(r.text, "html.parser")
+            candidates = []
+            for a in soup.find_all("a", href=True):
+                href = a.get("href", "")
+                if href.startswith("/url?q="):
+                    href = href.split("/url?q=", 1)[1].split("&", 1)[0]
+                if not href.startswith(("http://", "https://")):
+                    continue
+                if likely_official_site(href, company_clean):
+                    candidates.append(href)
+            if candidates:
+                return candidates[0]
+        except requests.RequestException:
+            continue
+        time.sleep(random.uniform(0.5, 1.2))
+    return ""
+
+
+def site_pages_to_check(home_url):
+    urls = [home_url]
+    try:
+        r = requests.get(home_url, headers={"User-Agent": random.choice(USER_AGENTS)}, timeout=DEEP_SEARCH_TIMEOUT)
+        if r.ok:
+            soup = BeautifulSoup(r.text, "html.parser")
+            base_host = urlparse(home_url).netloc.lower()
+            scored = []
+            for a in soup.find_all("a", href=True):
+                href = urljoin(home_url, a["href"])
+                if urlparse(href).netloc.lower() != base_host:
+                    continue
+                label = clean(a.get_text(" ", strip=True)).lower()
+                href_low = href.lower()
+                score = sum(1 for word in CONTACT_WORDS if word in label or word in href_low)
+                if score:
+                    scored.append((score, href))
+            for _, href in sorted(scored, reverse=True):
+                if href not in urls:
+                    urls.append(href)
+                if len(urls) >= DEEP_SEARCH_MAX_SITE_PAGES:
+                    break
+    except requests.RequestException:
+        pass
+
+    # Common German contact endpoints as fallback.
+    for suffix in ("/kontakt", "/contact", "/impressum", "/karriere"):
+        candidate = urljoin(home_url.rstrip("/") + "/", suffix.lstrip("/"))
+        if candidate not in urls and len(urls) < DEEP_SEARCH_MAX_SITE_PAGES:
+            urls.append(candidate)
+    return urls[:DEEP_SEARCH_MAX_SITE_PAGES]
+
+
+def deep_find_email(company, location=""):
+    session = make_session()
+    site = search_official_site(session, company, location)
+    if not site:
+        return "", ""
+
+    for page_url in site_pages_to_check(site):
+        try:
+            r = session.get(page_url, timeout=DEEP_SEARCH_TIMEOUT, allow_redirects=True)
+            if not r.ok or "text/html" not in r.headers.get("Content-Type", "text/html"):
+                continue
+            soup = BeautifulSoup(r.text, "html.parser")
+            email = extract_email(soup)
+            if email:
+                return email, site
+        except requests.RequestException:
+            continue
+        time.sleep(random.uniform(*DEEP_SEARCH_DELAY))
+    return "", site
+
+
+def enrich_missing_emails(jobs):
+    if not DEEP_SEARCH:
+        return jobs
+
+    candidates = [j for j in jobs if not j.get("emails_rh") and j.get("entreprise") not in {"À vérifier", "Entreprise non indiquée"}]
+    candidates = candidates[:DEEP_SEARCH_MAX_COMPANIES]
+    print(f"[*] Deep search: {len(candidates)} entreprises sans email à vérifier sur le web.")
+
+    found = 0
+    with ThreadPoolExecutor(max_workers=DEEP_SEARCH_WORKERS) as executor:
+        future_map = {
+            executor.submit(deep_find_email, j.get("entreprise", ""), j.get("lieu", "")): j
+            for j in candidates
+        }
+        for n, future in enumerate(as_completed(future_map), start=1):
+            job = future_map[future]
+            try:
+                email, site = future.result()
+            except Exception as exc:
+                print(f"[!] deep search erreur {job.get('entreprise')}: {exc}")
+                email, site = "", ""
+            if email:
+                job["emails_rh"] = email
+                found += 1
+                print(f"[+] DEEP EMAIL {found}: {email} | {job.get('entreprise')} | {site}")
+            if site and not job.get("site_entreprise"):
+                job["site_entreprise"] = site
+            if n % 50 == 0:
+                print(f"[*] deep search: {n}/{len(candidates)} | nouveaux emails: {found}")
+
+    print(f"[OK] Deep search terminé: +{found} emails publics trouvés sur les sites des entreprises.")
+    return jobs
+
+
 def scrape_details(links):
-    from concurrent.futures import ThreadPoolExecutor, as_completed
     jobs = []
     with ThreadPoolExecutor(max_workers=DETAIL_WORKERS) as executor:
         futures = {executor.submit(parse_detail, link): link for link in links}
@@ -251,7 +418,9 @@ def scrape_details(links):
         unique[job["id"]] = job
     jobs = list(unique.values())
     email_count = sum(1 for x in jobs if x["emails_rh"])
-    print(f"[*] Offres finales: {len(jobs)} | avec email public: {email_count}")
+    print(f"[*] Offres finales: {len(jobs)} | avec email avant deep search: {email_count}")
+
+    jobs = enrich_missing_emails(jobs)
     return jobs
 
 
@@ -264,7 +433,6 @@ def send_to_sheet(jobs):
     last_error = None
 
     # ONE HTTP request per complete daily scrape. No batches.
-    # Apps Script receives the complete JSON array and writes it in one setValues call.
     for attempt in range(1, WEBHOOK_RETRIES + 1):
         try:
             print(f"[*] Envoi unique vers Google Sheets: {len(jobs)} offres")
@@ -300,7 +468,7 @@ def send_to_sheet(jobs):
 
 def main():
     print("=" * 70)
-    print("AUSBILDUNG KAUFMANN/Kauffrau — DAILY MASS SCRAPER")
+    print("AUSBILDUNG KAUFMANN/Kauffrau — DAILY MASS SCRAPER + DEEP EMAIL SEARCH")
     print(f"Objectif: {TARGET_OFFERS}+ offres candidates")
     print("=" * 70)
 
@@ -315,7 +483,7 @@ def main():
         print(f"[!] Objectif de {TARGET_OFFERS} offres non atteint: {len(jobs)} offres exploitables.")
     else:
         print(f"[OK] Objectif offres atteint: {len(jobs)}")
-    print(f"[OK] Emails publics trouvés: {email_count}")
+    print(f"[OK] Emails publics trouvés au total: {email_count}")
     print("[OK] Run terminé.")
 
 
