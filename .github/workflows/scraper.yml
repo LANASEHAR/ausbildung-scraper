@@ -17,7 +17,6 @@ permissions:
 jobs:
   scrape_jobs:
     runs-on: ubuntu-latest
-  
 
     steps:
       - name: Checkout repository
