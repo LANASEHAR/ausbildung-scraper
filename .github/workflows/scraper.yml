@@ -17,7 +17,7 @@ permissions:
 jobs:
   scrape_jobs:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+  
 
     steps:
       - name: Checkout repository
