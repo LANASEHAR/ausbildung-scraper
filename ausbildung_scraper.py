@@ -9,9 +9,6 @@ from urllib.parse import quote_plus, unquote, urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
 
-# ============================================================
-# SOURCE: AUSBILDUNG ONLY
-# ============================================================
 BASE_URL = "https://www.arbeitsagentur.de"
 SEARCH_URL = BASE_URL + "/jobsuche/suche"
 
@@ -33,7 +30,6 @@ MAX_DETAIL_PAGES = 1400
 DETAIL_WORKERS = 8
 DETAIL_TIMEOUT = 18
 
-# Deep search is intentionally smaller/faster than before.
 DEEP_SEARCH = True
 DEEP_SEARCH_WORKERS = 8
 DEEP_SEARCH_TIMEOUT = 12
@@ -259,8 +255,7 @@ def scrape_details(links):
             if n % 50 == 0:
                 count = sum(1 for x in jobs if x.get("emails_rh"))
                 print(f"[*] détails traités: {n}/{len(links)} | offres: {len(jobs)} | avec email: {count}")
-    unique = {job["id"]: job for job in jobs}
-    jobs = list(unique.values())
+    jobs = list({job["id"]: job for job in jobs}.values())
     print(f"[*] Offres finales: {len(jobs)} | avec email avant deep search: {sum(1 for x in jobs if x.get('emails_rh'))}")
     return jobs
 
@@ -350,7 +345,7 @@ def candidate_score(url, title, snippet, company):
 
 
 def verify_official_site(url, company):
-    """Open the candidate site and verify company identity before extracting any email."""
+    """Verify company identity on the actual site. Never trust search snippets for emails."""
     if domain_is_bad(url):
         return "", ""
     root = f"https://{host_of(url)}/"
@@ -366,12 +361,69 @@ def verify_official_site(url, company):
         page_text = clean(soup.get_text(" ", strip=True)).lower()
         title = clean(soup.title.get_text(" ", strip=True)) if soup.title else ""
         identity_hits = sum(1 for token in tokens if token in page_text or token in title.lower())
-        # For short/ambiguous names, require at least one strong identity hit.
         if tokens and identity_hits == 0:
             return "", ""
         return final_root, extract_email(soup)
     except requests.RequestException:
         return "", ""
+
+
+def site_pages_to_check(site):
+    """Return a small, high-value set of official-site pages."""
+    root = site.rstrip("/") + "/"
+    urls = [root]
+    seen = {root}
+    paths = (
+        "/kontakt", "/contact", "/impressum", "/ansprechpartner",
+        "/karriere", "/bewerbung", "/jobs", "/ausbildung",
+    )
+    try:
+        r = requests.get(root, headers={"User-Agent": random.choice(USER_AGENTS)}, timeout=DEEP_SEARCH_TIMEOUT)
+        if r.ok:
+            soup = BeautifulSoup(r.text, "html.parser")
+            links = []
+            for a in soup.find_all("a", href=True):
+                href = urljoin(root, a["href"])
+                if host_of(href) != host_of(root):
+                    continue
+                label = clean(a.get_text(" ", strip=True)).lower()
+                value = (href + " " + label).lower()
+                if any(word in value for word in CONTACT_WORDS):
+                    links.append(href)
+            for href in links:
+                if href not in seen:
+                    urls.append(href); seen.add(href)
+    except requests.RequestException:
+        pass
+    for path in paths:
+        href = urljoin(root, path.lstrip("/"))
+        if href not in seen:
+            urls.append(href); seen.add(href)
+    return urls[:DEEP_SEARCH_MAX_SITE_PAGES]
+
+
+def crawl_verified_site(site):
+    for page_url in site_pages_to_check(site):
+        try:
+            r = requests.get(
+                page_url,
+                headers={"User-Agent": random.choice(USER_AGENTS), "Accept-Language": "de-DE,de;q=0.9,en;q=0.7"},
+                timeout=DEEP_SEARCH_TIMEOUT,
+                allow_redirects=True,
+            )
+            if not r.ok:
+                continue
+            content_type = r.headers.get("Content-Type", "").lower()
+            if content_type and "html" not in content_type and "xml" not in content_type:
+                continue
+            soup = BeautifulSoup(r.text, "html.parser")
+            email = extract_email(soup) or first_email(r.text)
+            if email:
+                return email
+        except requests.RequestException:
+            pass
+        time.sleep(random.uniform(*DEEP_SEARCH_DELAY))
+    return ""
 
 
 def search_company_web(company, location=""):
@@ -395,19 +447,20 @@ def search_company_web(company, location=""):
                 if score > 0:
                     candidates.append((score, href))
             time.sleep(random.uniform(0.1, 0.25))
-    # Verify candidates in score order. NEVER trust an email from the search snippet.
+
+    # Search snippets are ONLY used to find a candidate site.
+    # Emails are accepted only after the real site is opened and verified.
     seen_hosts = set()
     for _, href in sorted(candidates, key=lambda x: x[0], reverse=True):
         host = host_of(href)
         if not host or host in seen_hosts:
             continue
         seen_hosts.add(host)
-        site, email = verify_official_site(href, company_clean)
-        if site:
-            if email:
-                return email, site
-            # Site is verified; caller can still record it even if no email is visible.
-            return "", site
+        site, homepage_email = verify_official_site(href, company_clean)
+        if not site:
+            continue
+        email = homepage_email or crawl_verified_site(site)
+        return email, site
     return "", ""
 
 
@@ -415,7 +468,7 @@ def enrich_missing_emails(jobs):
     if not DEEP_SEARCH:
         return jobs
 
-    # One deep-search job per company, not one per offer.
+    # One deep-search task per unique company. All its offers receive the result.
     groups = {}
     for job in jobs:
         if job.get("emails_rh"):
@@ -424,17 +477,16 @@ def enrich_missing_emails(jobs):
         if not company or company in {"À vérifier", "Entreprise non indiquée"}:
             continue
         key = normalize_company(company)
-        groups.setdefault(key, {"company": company, "location": job.get("lieu", ""), "jobs": []})["jobs"].append(job)
+        if key not in groups:
+            groups[key] = {"company": company, "location": job.get("lieu", ""), "jobs": []}
+        groups[key]["jobs"].append(job)
 
     groups = list(groups.values())[:DEEP_SEARCH_MAX_COMPANIES]
     print(f"[*] Deep search: {len(groups)} entreprises UNIQUES à vérifier (déduplication activée).")
-    found = 0
-    sites = 0
+    found, sites = 0, 0
 
     with ThreadPoolExecutor(max_workers=DEEP_SEARCH_WORKERS) as executor:
-        future_map = {
-            executor.submit(search_company_web, g["company"], g["location"]): g for g in groups
-        }
+        future_map = {executor.submit(search_company_web, g["company"], g["location"]): g for g in groups}
         for n, future in enumerate(as_completed(future_map), start=1):
             group = future_map[future]
             try:
@@ -444,15 +496,13 @@ def enrich_missing_emails(jobs):
                 email, site = "", ""
             if site:
                 sites += 1
+                for job in group["jobs"]:
+                    job["site_entreprise"] = site
             if email:
                 found += 1
                 for job in group["jobs"]:
                     job["emails_rh"] = email
-                    job["site_entreprise"] = site
                 print(f"[+] DEEP EMAIL {found}: {email} | {group['company']} | {site} | offres liées: {len(group['jobs'])}")
-            elif site:
-                for job in group["jobs"]:
-                    job["site_entreprise"] = site
             if n % 25 == 0 or n == len(groups):
                 print(f"[*] deep search: {n}/{len(groups)} | sites vérifiés: {sites} | nouveaux emails: {found}")
 
@@ -511,19 +561,18 @@ def main():
     print(f"Objectif: {TARGET_OFFERS}+ offres candidates")
     print("=" * 72)
 
-    # 1) Collect and parse offers.
     links = collect_links()
     jobs = scrape_details(links)
 
-    # 2) IMPORTANT: send offers immediately. Do not wait for deep search.
+    # 1. Offers go to Sheets immediately after offer scraping.
     if jobs:
         send_to_sheet(jobs)
         print("[OK] Offres envoyées au Sheet AVANT le deep search.")
 
-    # 3) Deep-search only UNIQUE companies.
+    # 2. Deep search runs after the first Sheet write, once per unique company.
     jobs = enrich_missing_emails(jobs)
 
-    # 4) Update only email/site fields in existing Sheet rows.
+    # 3. Only email/site fields are updated in existing rows.
     update_sheet(jobs)
 
     email_count = sum(1 for job in jobs if job.get("emails_rh"))
