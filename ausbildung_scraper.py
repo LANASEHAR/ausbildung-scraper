@@ -76,12 +76,25 @@ if __name__ == "__main__":
     extracted_jobs = scrape_arbeitsagentur()
     print(f"[*] Total offres brutes trouvées : {len(extracted_jobs)}")
     
-    if extracted_jobs:
-        filename = "ausbildung_applications_export.csv"
-        fieldnames = ["date_detection", "statut", "role_cible", "intitule", "entreprise", "lieu", "emails_rh", "source", "lien", "id"]
-        
-        with open(filename, "w", newline="", encoding="utf-8-sig") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(extracted_jobs)
-        print(f"[OK] Fichier CSV généré avec succès : {filename}")
+    def send_to_google_sheet_webhook(jobs):
+  webhook_url = os.environ.get('GOOGLE_SHEET_WEBHOOK_URL', '').strip()
+
+  if not webhook_url:
+    print('[!] Erreur : Secret GOOGLE_SHEET_WEBHOOK_URL introuvable.')
+    return
+
+  if not jobs:
+    print('[i] Aucune offre à envoyer.')
+    return
+
+  try:
+    headers = {'Content-Type': 'application/json'}
+    response = requests.post(
+        webhook_url,
+        data=json.dumps(jobs),
+        headers=headers,
+        timeout=30,
+    )
+    print(f'[+] Réponse Webhook ({response.status_code}) : {response.text}')
+  except Exception as e:
+    print(f'[!] Échec envoi Webhook : {e}')
