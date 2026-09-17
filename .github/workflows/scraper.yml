@@ -2,12 +2,12 @@ name: Ausbildung Job Scraper
 
 on:
   schedule:
-    - cron: '0 * * * *'
+    - cron: '0 2 * * *'
   workflow_dispatch:
 
 concurrency:
   group: ausbildung-scraper
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -15,7 +15,7 @@ permissions:
 jobs:
   scrape_jobs:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 90
 
     steps:
       - name: Checkout repository
@@ -35,7 +35,7 @@ jobs:
       - name: Validate Python syntax
         run: python -m py_compile ausbildung_scraper.py
 
-      - name: Run scraper
+      - name: Run massive scraper
         env:
           GOOGLE_SHEET_WEBHOOK_URL: ${{ secrets.GOOGLE_SHEET_WEBHOOK_URL }}
         run: python ausbildung_scraper.py
