@@ -2,11 +2,13 @@ name: Ausbildung Job Scraper
 
 on:
   schedule:
+    # One complete collection every 24 hours.
+    # 02:00 UTC = 04:00 CEST / 03:00 CET.
     - cron: '0 2 * * *'
   workflow_dispatch:
 
 concurrency:
-  group: ausbildung-scraper
+  group: ausbildung-daily-scraper
   cancel-in-progress: false
 
 permissions:
@@ -35,7 +37,7 @@ jobs:
       - name: Validate Python syntax
         run: python -m py_compile ausbildung_scraper.py
 
-      - name: Run massive scraper
+      - name: Run daily mass scraper
         env:
           GOOGLE_SHEET_WEBHOOK_URL: ${{ secrets.GOOGLE_SHEET_WEBHOOK_URL }}
-        run: python ausbildung_scraper.py
+        run: python -u ausbildung_scraper.py
