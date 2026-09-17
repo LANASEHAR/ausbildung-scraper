@@ -12,14 +12,9 @@ BASE_URL = "https://www.arbeitsagentur.de"
 SEARCH_URL = BASE_URL + "/jobsuche/suche"
 
 SEARCH_QUERIES = [
-    "Kaufmann",
-    "Kauffrau",
-    "Kaufleute",
-    "Kaufmann/-frau",
-    "Kaufmann im E-Commerce",
-    "Kauffrau im E-Commerce",
-    "Kaufmann für Büromanagement",
-    "Kauffrau für Büromanagement",
+    "Kaufmann", "Kauffrau", "Kaufleute", "Kaufmann/-frau",
+    "Kaufmann im E-Commerce", "Kauffrau im E-Commerce",
+    "Kaufmann für Büromanagement", "Kauffrau für Büromanagement",
     "Kaufmann für Spedition und Logistikdienstleistung",
     "Kauffrau für Spedition und Logistikdienstleistung",
     "Kaufmann für Groß- und Außenhandelsmanagement",
@@ -33,10 +28,9 @@ MAX_SEARCH_PAGES_PER_QUERY = 40
 MAX_DETAIL_PAGES = 1400
 DETAIL_WORKERS = 8
 DETAIL_TIMEOUT = 15
-WEBHOOK_TIMEOUT = 60
-WEBHOOK_RETRIES = 4
+WEBHOOK_TIMEOUT = 120
+WEBHOOK_RETRIES = 3
 DETAIL_DELAY = (0.20, 0.55)
-BATCH_SIZE = 10
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36",
@@ -67,9 +61,8 @@ def clean(value):
 def first_email(text):
     for email in EMAIL_RE.findall(text or ""):
         email = email.lower().rstrip(".,;:")
-        if email.endswith("@arbeitsagentur.de"):
-            continue
-        return email
+        if not email.endswith("@arbeitsagentur.de"):
+            return email
     return ""
 
 
@@ -116,7 +109,6 @@ def collect_links():
     for query in SEARCH_QUERIES:
         print(f"[+] Recherche: {query}")
         empty_pages = 0
-
         for page in range(MAX_SEARCH_PAGES_PER_QUERY):
             try:
                 batch = search_page(session, query, page)
@@ -134,7 +126,6 @@ def collect_links():
                         break
 
             print(f"    page {page}: {new_count} nouvelles offres (total {len(links)})")
-
             if not batch or new_count == 0:
                 empty_pages += 1
             else:
@@ -142,8 +133,6 @@ def collect_links():
 
             if empty_pages >= 2 or len(links) >= MAX_DETAIL_PAGES:
                 break
-
-            # Small pause reduces the chance of triggering the source's rate limits.
             time.sleep(random.uniform(0.25, 0.60))
 
     print(f"[*] {len(links)} liens uniques collectés.")
@@ -165,7 +154,6 @@ def parse_detail(link):
         h1 = soup.find("h1")
         title = clean(h1.get_text(" ", strip=True)) if h1 else "Ausbildung Kaufmann/-frau"
         title = re.sub(r"^Stellenangebot:\s*", "", title, flags=re.I)
-
         email = extract_email(soup)
 
         company = ""
@@ -211,8 +199,6 @@ def parse_detail(link):
         }
 
     except requests.RequestException as exc:
-        # Keep the offer even when the detail page is blocked. This means the
-        # daily target is based on offers, not only on pages exposing an email.
         print(f"[!] détail inaccessible: {link} -> {exc}")
         return {
             "date_detection": time.strftime("%Y-%m-%d %H:%M"),
@@ -246,7 +232,6 @@ def parse_detail(link):
 
 def scrape_details(links):
     from concurrent.futures import ThreadPoolExecutor, as_completed
-
     jobs = []
     with ThreadPoolExecutor(max_workers=DETAIL_WORKERS) as executor:
         futures = {executor.submit(parse_detail, link): link for link in links}
@@ -255,8 +240,8 @@ def scrape_details(links):
             if job:
                 jobs.append(job)
                 if job["emails_rh"]:
-                    print(f"[+] email {sum(1 for x in jobs if x['emails_rh'])}: {job['emails_rh']} | {job['entreprise']}")
-
+                    email_count = sum(1 for x in jobs if x["emails_rh"])
+                    print(f"[+] email {email_count}: {job['emails_rh']} | {job['entreprise']}")
             if n % 50 == 0:
                 email_count = sum(1 for x in jobs if x["emails_rh"])
                 print(f"[*] détails traités: {n}/{len(links)} | offres: {len(jobs)} | avec email: {email_count}")
@@ -264,69 +249,53 @@ def scrape_details(links):
     unique = {}
     for job in jobs:
         unique[job["id"]] = job
-
     jobs = list(unique.values())
     email_count = sum(1 for x in jobs if x["emails_rh"])
     print(f"[*] Offres finales: {len(jobs)} | avec email public: {email_count}")
     return jobs
 
 
-def post_batch(session, jobs):
+def send_to_sheet(jobs):
     webhook = os.environ.get("GOOGLE_SHEET_WEBHOOK_URL", "").strip()
     if not webhook:
         raise RuntimeError("GOOGLE_SHEET_WEBHOOK_URL manquant")
 
+    session = make_session()
     last_error = None
 
+    # ONE HTTP request per complete daily scrape. No batches.
+    # Apps Script receives the complete JSON array and writes it in one setValues call.
     for attempt in range(1, WEBHOOK_RETRIES + 1):
         try:
-            # Google Apps Script web apps can redirect from script.google.com to
-            # script.googleusercontent.com. requests follows this redirect.
-            r = session.post(
+            print(f"[*] Envoi unique vers Google Sheets: {len(jobs)} offres")
+            response = session.post(
                 webhook,
                 json=jobs,
-                timeout=(10, WEBHOOK_TIMEOUT),
+                timeout=(15, WEBHOOK_TIMEOUT),
                 allow_redirects=True,
             )
-            print(f"    webhook HTTP {r.status_code} | tentative {attempt}/{WEBHOOK_RETRIES}")
-            r.raise_for_status()
+            print(f"[*] Webhook HTTP {response.status_code} | tentative {attempt}/{WEBHOOK_RETRIES}")
+            response.raise_for_status()
 
             try:
-                payload = r.json()
+                payload = response.json()
             except ValueError:
-                payload = {"raw": r.text[:500]}
+                payload = {"raw": response.text[:1000]}
 
+            print(f"[*] Réponse Apps Script: {payload}")
             if isinstance(payload, dict) and payload.get("status") == "error":
                 raise RuntimeError("Google Apps Script: " + str(payload.get("message")))
 
-            return payload
+            print("[OK] Toutes les offres du run ont été envoyées en une seule requête.")
+            return
 
         except (requests.RequestException, RuntimeError) as exc:
             last_error = exc
-            print(f"    [!] webhook tentative {attempt}/{WEBHOOK_RETRIES}: {exc}")
+            print(f"[!] Envoi échoué, tentative {attempt}/{WEBHOOK_RETRIES}: {exc}")
             if attempt < WEBHOOK_RETRIES:
-                time.sleep(3 * attempt)
+                time.sleep(5 * attempt)
 
     raise RuntimeError(f"Webhook impossible après {WEBHOOK_RETRIES} tentatives: {last_error}")
-
-
-def send_to_sheet(jobs):
-    session = make_session()
-    total_added = 0
-    total_sent = 0
-
-    for start in range(0, len(jobs), BATCH_SIZE):
-        batch = jobs[start:start + BATCH_SIZE]
-        result = post_batch(session, batch)
-        total_sent += len(batch)
-        added = int(result.get("added", 0)) if isinstance(result, dict) else 0
-        total_added += added
-        print(f"[+] Batch {start + 1}-{start + len(batch)} envoyé: {result}")
-
-        # Avoid hammering Apps Script between batches.
-        time.sleep(0.5)
-
-    print(f"[*] Total envoyé: {total_sent} | total ajouté selon Apps Script: {total_added}")
 
 
 def main():
@@ -346,7 +315,6 @@ def main():
         print(f"[!] Objectif de {TARGET_OFFERS} offres non atteint: {len(jobs)} offres exploitables.")
     else:
         print(f"[OK] Objectif offres atteint: {len(jobs)}")
-
     print(f"[OK] Emails publics trouvés: {email_count}")
     print("[OK] Run terminé.")
 
