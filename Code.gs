@@ -33,7 +33,7 @@ const CONFIG = {
   NOM_ONGLET:  "Ausbildung",
 
   // Quota d'envoi par exécution (protection anti-spam Gmail)
-  BATCH_LIMIT: 20,
+  BATCH_LIMIT: 30,
 
   // Délai de relance en heures
   DELAI_RELANCE_H: 48,
