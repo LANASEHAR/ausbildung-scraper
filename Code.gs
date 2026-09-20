@@ -399,9 +399,18 @@ function traiterAusbildungCandidatures() {
     return;
   }
 
-  let compteur = 0;
+  // Un envoi n'est compté que si GmailApp.sendEmail() termine sans erreur.
+  // Les lignes sans email valide sont ignorées et ne consomment PAS le quota.
+  const quotaRestant = MailApp.getRemainingDailyQuota();
+  if (quotaRestant < CONFIG.BATCH_LIMIT) {
+    Logger.log(`⚠️ Quota Gmail restant insuffisant : ${quotaRestant}. Objectif : ${CONFIG.BATCH_LIMIT}. Aucun batch lancé.`);
+    return;
+  }
 
-  for (let i = 1; i < data.length; i++) {
+  let compteur = 0;
+  const emailsEnvoyesCetteExecution = new Set();
+
+  for (let i = 1; i < data.length && compteur < CONFIG.BATCH_LIMIT; i++) {
     if (compteur >= CONFIG.BATCH_LIMIT) {
       Logger.log(`🛑 Quota de ${CONFIG.BATCH_LIMIT} envois atteint pour cette exécution.`);
       break;
@@ -423,8 +432,14 @@ function traiterAusbildungCandidatures() {
     }
 
     const emailCible = extractFirstEmail(emailsRh);
-    if (!emailCible) {
-      Logger.log(`⏭️ Ligne ${rowNum} ignorée : impossible d'extraire un email propre`);
+    if (!emailCible || !isValidEmail(emailCible)) {
+      Logger.log(`⏭️ Ligne ${rowNum} ignorée : aucun email valide (${emailsRh})`);
+      continue;
+    }
+
+    const emailKey = emailCible.toLowerCase();
+    if (emailsEnvoyesCetteExecution.has(emailKey)) {
+      Logger.log(`⏭️ Ligne ${rowNum} ignorée : email déjà utilisé cette exécution (${emailCible})`);
       continue;
     }
 
@@ -451,8 +466,9 @@ function traiterAusbildungCandidatures() {
         sheet.getRange(rowNum, COL.STATUT + 1).setValue("CANDIDATURE_ENVOYEE");
         sheet.getRange(rowNum, COL.DATE_ENVOI + 1).setValue(new Date());
         compteur++;
+        emailsEnvoyesCetteExecution.add(emailKey);
 
-        Logger.log(`✅ CANDIDATURE ENVOYÉE (ligne ${rowNum})`);
+        Logger.log(`✅ ENVOI RÉUSSI #${compteur}/${CONFIG.BATCH_LIMIT} (ligne ${rowNum})`);
         Logger.log(`   → Entreprise : ${entreprise}`);
         Logger.log(`   → Email      : ${emailCible}`);
         Logger.log(`   → CV joint   : ${cvFile.getName()}`);
@@ -486,8 +502,9 @@ function traiterAusbildungCandidatures() {
         sheet.getRange(rowNum, COL.STATUT + 1).setValue("RELANCE_EFFECTUEE");
         sheet.getRange(rowNum, COL.DATE_RELANCE + 1).setValue(new Date());
         compteur++;
+        emailsEnvoyesCetteExecution.add(emailKey);
 
-        Logger.log(`🔄 RELANCE 48H EFFECTUÉE (ligne ${rowNum})`);
+        Logger.log(`🔄 RELANCE RÉUSSIE #${compteur}/${CONFIG.BATCH_LIMIT} (ligne ${rowNum})`);
         Logger.log(`   → Entreprise : ${entreprise}`);
         Logger.log(`   → Email      : ${emailCible}`);
         Logger.log(`   → Délai réel : ${Math.round(diffHeures)}h`);
