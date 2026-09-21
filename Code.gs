@@ -4,8 +4,8 @@
  * Google Apps Script pour Google Sheet "Ausbildung applications"
  *
  * FONCTIONS PRINCIPALES :
- *   doPost(e)                        → Webhook : reçoit les offres du scraper Python
- *   traiterAusbildungCandidatures()  → Envoi emails + relances 48h (batch 20/run)
+ *   doPost(e)                        → Webhook INSERT + UPDATE avec déduplication ID/email
+ *   traiterAusbildungCandidatures()  → Envoi emails + relances 48h (max 30/run)
  *   getCV(intitule, roleCible)        → Mapping 5 CVs par spécialité Kauffrau
  *   configurerDeclencheurs()          → Installe le trigger horaire automatique
  *
@@ -32,19 +32,28 @@ const CONFIG = {
   // Nom de l'onglet dans le Google Sheet (fallback sur onglet actif)
   NOM_ONGLET:  "Ausbildung",
 
-  // Quota d'envoi par exécution (protection anti-spam Gmail)
+  // Maximum de candidatures réussies par exécution.
+  // Le trigger est horaire : objectif = jusqu'à 30 emails valides / heure.
   BATCH_LIMIT: 30,
+
+  // Pause entre deux envois pour éviter un burst trop agressif.
+  DELAI_ENTRE_EMAILS_MS: 1000,
 
   // Délai de relance en heures
   DELAI_RELANCE_H: 48,
 
-  // Mapping EXACT des noms de fichiers CV sur Google Drive
+  // Mapping des CV sur Google Drive.
+  // Les 2 fichiers fournis existent et correspondent exactement aux noms ci-dessous.
+  // Pour Lagerlogistik et Einzelhandel, le script REFUSE d'envoyer avec un mauvais CV :
+  // il attend le CV spécifique correspondant.
   CV_MAPPING: {
-    "buero":      "Bewerbung Kauffrau Buromanagemenet Halima Essaouaf.pdf",
-    "ecommerce":  "Bewerbung Kauffrau ECommerce Halima Essaouaf.pdf",
-    "handel":     "Bewerbung Kauffrau GrossAussenhandel Halima Essaouaf.pdf",
-    "spedition":  "Bewerbung Kauffrau Spedition Logistik Halima Essaouaf.pdf",
-    "tourismus":  "Bewerbung Kauffrau Tourismus Freizeit Halima Essaouaf.pdf",
+    "buero":          "Bewerbung Kauffrau Buromanagemenet Halima Essaouaf.pdf",
+    "ecommerce":      "Bewerbung Kauffrau ECommerce Halima Essaouaf.pdf",
+    "handel":         "Bewerbung Kauffrau GrossAussenhandel Halima Essaouaf.pdf",
+    "spedition":      "Bewerbung Kauffrau Spedition Logistik Halima Essaouaf.pdf",
+    "lagerlogistik":  "Bewerbung Fachkraft Lagerlogistik Halima Essaouaf.pdf",
+    "einzelhandel":   "Bewerbung Verkäuferin Einzelhandel Halima Essaouaf.pdf",
+    "tourismus":      "Bewerbung Kauffrau Tourismus Freizeit Halima Essaouaf.pdf",
   },
 };
 
@@ -80,31 +89,64 @@ function getSheet() {
 /**
  * Valide qu'un email est utilisable (contient "@" et n'est pas un placeholder).
  */
-function isValidEmail(email) {
-  if (!email) return false;
-  const str = String(email).trim();
-  return (
-    str.includes("@") &&
-    !str.toLowerCase().includes("non détecté") &&
-    !str.toLowerCase().includes("postuler via lien") &&
-    /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/.test(str.split(" / ")[0].trim())
-  );
+function normalizeEmail(email) {
+  if (!email) return "";
+  return String(email)
+    .trim()
+    .toLowerCase()
+    .replace(/^mailto:/i, "")
+    .replace(/[<>"']/g, "")
+    .trim();
 }
 
 /**
- * Extrait le premier email valide d'une cellule (peut contenir "email1 / email2").
+ * Extrait le premier email valide d'une cellule.
+ * Une seule adresse est conservée dans le Sheet afin de garantir
+ * l'unicité des contacts.
  */
 function extractFirstEmail(emailsRh) {
-  if (!emailsRh) return null;
-  const candidates = String(emailsRh).split(/\s*\/\s*/);
-  for (const candidate of candidates) {
-    const clean = candidate.replace(/^[u003e>"'\\]+/, "").trim();
-    if (/^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/.test(clean)) {
-      return clean;
+  if (!emailsRh) return "";
+  const matches = String(emailsRh).match(/[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}/ig) || [];
+  for (const candidate of matches) {
+    const email = normalizeEmail(candidate);
+    if (isValidEmail(email)) return email;
+  }
+  return "";
+}
+
+function isValidEmail(email) {
+  const str = normalizeEmail(email);
+  return /^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$/i.test(str) &&
+    !str.includes("non détecté") &&
+    !str.includes("postuler via lien");
+}
+
+/**
+ * Retourne les IDs et emails déjà utilisés dans le Sheet.
+ * L'email est normalisé pour empêcher les doublons du type
+ * Contact@Entreprise.de / contact@entreprise.de.
+ */
+function buildSheetIndexes(data) {
+  const existingIds = new Set();
+  const existingEmails = new Set();
+  const sentEmails = new Set();
+
+  for (let i = 1; i < data.length; i++) {
+    const id = String(data[i][COL.ID] || "").trim();
+    const email = extractFirstEmail(data[i][COL.EMAILS_RH] || "");
+    const status = String(data[i][COL.STATUT] || "").trim();
+
+    if (id) existingIds.add(id);
+    if (email) existingEmails.add(email);
+
+    if (email && (status === "CANDIDATURE_ENVOYEE" || status === "RELANCE_EFFECTUEE")) {
+      sentEmails.add(email);
     }
   }
-  return null;
+
+  return { existingIds, existingEmails, sentEmails };
 }
+
 
 /**
  * Formate une date en "DD.MM.YYYY HH:MM" (format allemand).
@@ -126,61 +168,156 @@ function formatDateDE(date) {
  * Insère uniquement les nouvelles offres (déduplication par ID colonne J).
  */
 function doPost(e) {
+  const lock = LockService.getScriptLock();
   try {
-    const rawData = JSON.parse(e.postData.contents);
-    const jobs = Array.isArray(rawData) ? rawData : [rawData];
+    lock.waitLock(30000);
 
+    const rawData = JSON.parse(e.postData.contents);
     const sheet = getSheet();
     const allData = sheet.getDataRange().getValues();
+    const { existingIds, existingEmails } = buildSheetIndexes(allData);
 
-    // Construire le Set des IDs déjà présents (Col J = index 9)
-    const existingIds = new Set();
-    for (let i = 1; i < allData.length; i++) {
-      const id = String(allData[i][COL.ID] || "").trim();
-      if (id) existingIds.add(id);
+    // ── MODE UPDATE : enrichissement email/site depuis le scraper ─────────
+    if (rawData && rawData.action === "update") {
+      const jobs = Array.isArray(rawData.jobs) ? rawData.jobs : [];
+      let updated = 0;
+      let duplicateEmails = 0;
+      let missingIds = 0;
+
+      const idToRow = new Map();
+      for (let i = 1; i < allData.length; i++) {
+        const id = String(allData[i][COL.ID] || "").trim();
+        if (id) idToRow.set(id, i + 1);
+      }
+
+      for (const job of jobs) {
+        const jobId = String(job.id || "").trim();
+        if (!jobId || !idToRow.has(jobId)) {
+          missingIds++;
+          continue;
+        }
+
+        const rowNum = idToRow.get(jobId);
+        const currentEmail = extractFirstEmail(sheet.getRange(rowNum, COL.EMAILS_RH + 1).getValue());
+        const newEmail = extractFirstEmail(job.emails_rh || "");
+
+        // Toujours permettre la mise à jour du site officiel.
+        if (job.site_entreprise) {
+          sheet.getRange(rowNum, COL.SOURCE + 2).setValue(job.site_entreprise);
+        }
+
+        // Ajouter l'email uniquement s'il est valide et réellement unique.
+        if (newEmail) {
+          if (!currentEmail || currentEmail === newEmail) {
+            if (!currentEmail) {
+              if (existingEmails.has(newEmail)) {
+                duplicateEmails++;
+                Logger.log("[UPDATE] Email déjà présent ailleurs, ignoré : " + newEmail);
+              } else {
+                sheet.getRange(rowNum, COL.EMAILS_RH + 1).setValue(newEmail);
+                existingEmails.add(newEmail);
+                updated++;
+              }
+            }
+          } else if (currentEmail !== newEmail) {
+            if (existingEmails.has(newEmail)) {
+              duplicateEmails++;
+              Logger.log("[UPDATE] Nouveau email déjà utilisé ailleurs, ignoré : " + newEmail);
+            } else {
+              sheet.getRange(rowNum, COL.EMAILS_RH + 1).setValue(newEmail);
+              existingEmails.delete(currentEmail);
+              existingEmails.add(newEmail);
+              updated++;
+            }
+          }
+        }
+      }
+
+      Logger.log("[UPDATE] " + updated + " email(s)/site(s) mis à jour | doublons email ignorés: " + duplicateEmails + " | IDs inconnus: " + missingIds);
+
+      return ContentService
+        .createTextOutput(JSON.stringify({
+          status: "success",
+          action: "update",
+          updated: updated,
+          duplicate_emails: duplicateEmails,
+          missing_ids: missingIds
+        }))
+        .setMimeType(ContentService.MimeType.JSON);
     }
 
+    // ── MODE INSERT : une offre = un ID unique ET un email unique ─────────
+    const jobs = Array.isArray(rawData) ? rawData : [rawData];
     let added = 0;
+    let duplicateIds = 0;
+    let duplicateEmails = 0;
+    let invalidEmails = 0;
 
     for (const job of jobs) {
       const jobId = String(job.id || "").trim();
+      const email = extractFirstEmail(job.emails_rh || "");
 
-      // Vérification doublon
-      if (!jobId || existingIds.has(jobId)) continue;
+      if (!jobId || existingIds.has(jobId)) {
+        duplicateIds++;
+        continue;
+      }
 
-      // Vérification email valide (FILTRE STRICT)
-      if (!isValidEmail(job.emails_rh)) continue;
+      // Le Sheet est volontairement un carnet de contacts unique :
+      // aucune ligne sans email valide et aucun email répété.
+      if (!email) {
+        invalidEmails++;
+        continue;
+      }
+
+      if (existingEmails.has(email)) {
+        duplicateEmails++;
+        continue;
+      }
 
       sheet.appendRow([
-        job.date_detection  || new Date().toISOString(),
-        job.statut          || "NOUVEAU",
-        job.role_cible      || "",
-        job.intitule        || "",
-        job.entreprise      || "",
-        job.lieu            || "Deutschland (Allemagne)",
-        job.emails_rh       || "",
-        job.source          || "Scraper Cloud Ausbildung",
-        job.lien            || "",
+        job.date_detection || new Date().toISOString(),
+        job.statut || "NOUVEAU",
+        job.role_cible || "",
+        job.intitule || "",
+        job.entreprise || "",
+        job.lieu || "Deutschland (Allemagne)",
+        email,
+        job.source || "Scraper Cloud Ausbildung",
+        job.lien || "",
         jobId,
-        "",  // Col K : date_envoi (vide au départ)
-        "",  // Col L : date_relance (vide au départ)
+        "",
+        "",
       ]);
 
       existingIds.add(jobId);
+      existingEmails.add(email);
       added++;
     }
 
-    Logger.log(`[WEBHOOK] ${added} nouvelles offres ajoutées sur ${jobs.length} reçues.`);
+    Logger.log("[INSERT] " + added + " ajoutées | IDs doublons: " + duplicateIds +
+      " | emails doublons: " + duplicateEmails + " | emails invalides/absents: " + invalidEmails);
 
     return ContentService
-      .createTextOutput(JSON.stringify({ status: "success", added: added }))
+      .createTextOutput(JSON.stringify({
+        status: "success",
+        action: "insert",
+        added: added,
+        duplicate_ids: duplicateIds,
+        duplicate_emails: duplicateEmails,
+        invalid_emails: invalidEmails
+      }))
       .setMimeType(ContentService.MimeType.JSON);
 
   } catch (error) {
     Logger.log("[WEBHOOK] Erreur: " + error.toString());
     return ContentService
-      .createTextOutput(JSON.stringify({ status: "error", message: error.toString() }))
+      .createTextOutput(JSON.stringify({
+        status: "error",
+        message: error.toString()
+      }))
       .setMimeType(ContentService.MimeType.JSON);
+  } finally {
+    try { lock.releaseLock(); } catch (_) {}
   }
 }
 
@@ -194,44 +331,83 @@ function doPost(e) {
  * Retourne l'une des clés : "buero" | "ecommerce" | "handel" | "spedition" | "tourismus"
  */
 function detecterSpecialite(intitule, roleCible) {
-  const text = ((intitule || "") + " " + (roleCible || "")).toLowerCase();
+  const text = ((intitule || "") + " " + (roleCible || ""))
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  // Priorité aux catégories les plus spécifiques.
+  if (
+    text.includes("lagerlogistik") ||
+    text.includes("fachkraft fur lagerlogistik") ||
+    (text.includes("lager") && text.includes("logistik"))
+  ) {
+    return "lagerlogistik";
+  }
+
+  if (
+    text.includes("einzelhandel") ||
+    text.includes("verkaufer") ||
+    text.includes("verkaeufer") ||
+    text.includes("verkaeuferin")
+  ) {
+    return "einzelhandel";
+  }
+
+  if (
+    text.includes("spedition") ||
+    text.includes("logistikdienstleistung") ||
+    text.includes("speditionskaufmann") ||
+    text.includes("speditionskauffrau")
+  ) {
+    return "spedition";
+  }
+
+  if (
+    text.includes("gross") ||
+    text.includes("aussenhandel") ||
+    text.includes("außenhandel") ||
+    text.includes("grosshandel") ||
+    text.includes("großhandel") ||
+    text.includes("gross- und aussenhandelsmanagement") ||
+    text.includes("groß- und außenhandelsmanagement")
+  ) {
+    return "handel";
+  }
 
   if (text.includes("e-commerce") || text.includes("ecommerce") || text.includes("e commerce")) {
     return "ecommerce";
   }
+
   if (
-    text.includes("groß") || text.includes("gross") ||
-    text.includes("außenhandel") || text.includes("aussenhandel") ||
-    text.includes("außenhandelskaufmann")
-  ) {
-    return "handel";
-  }
-  if (text.includes("spedition") || text.includes("logistik") || text.includes("speditionskaufmann")) {
-    return "spedition";
-  }
-  if (
-    text.includes("tourismus") || text.includes("freizeit") ||
-    text.includes("reisebüro") || text.includes("reisebuero") || text.includes("reiseverkehr")
+    text.includes("tourismus") ||
+    text.includes("freizeit") ||
+    text.includes("reisebuero") ||
+    text.includes("reiseverkehr")
   ) {
     return "tourismus";
   }
-  // Défaut → Büromanagement
+
   return "buero";
 }
+
 
 /**
  * Titre formel de l'Ausbildung selon la spécialité détectée.
  */
 function getTitreAusbildung(specialite) {
   const titres = {
-    "buero":      "Kauffrau für Büromanagement",
-    "ecommerce":  "Kauffrau im E-Commerce",
-    "handel":     "Kauffrau im Groß- und Außenhandelsmanagement",
-    "spedition":  "Kauffrau für Spedition und Logistikdienstleistung",
-    "tourismus":  "Kauffrau für Tourismus und Freizeit",
+    "buero":         "Kauffrau für Büromanagement",
+    "ecommerce":     "Kauffrau im E-Commerce",
+    "handel":        "Kauffrau im Groß- und Außenhandelsmanagement",
+    "spedition":     "Kauffrau für Spedition und Logistikdienstleistung",
+    "lagerlogistik": "Fachkraft für Lagerlogistik",
+    "einzelhandel":  "Kauffrau im Einzelhandel",
+    "tourismus":     "Kauffrau für Tourismus und Freizeit",
   };
   return titres[specialite] || "Kauffrau für Büromanagement";
 }
+
 
 /**
  * Recherche et retourne le fichier CV PDF correct depuis Google Drive.
@@ -240,28 +416,26 @@ function getTitreAusbildung(specialite) {
  */
 function getCV(intitule, roleCible) {
   const specialite = detecterSpecialite(intitule, roleCible);
-  const filename   = CONFIG.CV_MAPPING[specialite];
+  const filename = CONFIG.CV_MAPPING[specialite];
 
-  Logger.log(`[CV] Spécialité détectée: ${specialite} → Fichier: ${filename}`);
+  if (!filename) {
+    Logger.log("[CV] Aucun mapping pour la spécialité: " + specialite);
+    return null;
+  }
 
-  // Recherche principale
-  let files = DriveApp.getFilesByName(filename);
+  Logger.log("[CV] Spécialité: " + specialite + " → " + filename);
+
+  const files = DriveApp.getFilesByName(filename);
   if (files.hasNext()) {
-    Logger.log(`[CV] Trouvé: ${filename}`);
     return files.next();
   }
 
-  // Fallback : CV Büromanagement (CV par défaut)
-  const fallbackFile = CONFIG.CV_MAPPING["buero"];
-  Logger.log(`[CV] '${filename}' introuvable → Fallback sur '${fallbackFile}'`);
-  const fallback = DriveApp.getFilesByName(fallbackFile);
-  if (fallback.hasNext()) {
-    return fallback.next();
-  }
-
-  Logger.log("[CV] ERREUR : Aucun CV Ausbildung trouvé sur le Drive !");
+  // IMPORTANT : aucun fallback vers un autre métier.
+  // On préfère ne pas envoyer plutôt que d'envoyer le mauvais CV.
+  Logger.log("[CV] MANQUANT : " + filename + " → candidature non envoyée.");
   return null;
 }
+
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -385,140 +559,173 @@ ${getSignatureHTML()}
  * Maximum CONFIG.BATCH_LIMIT envois par exécution.
  */
 function traiterAusbildungCandidatures() {
-  const sheet = getSheet();
-  const data  = sheet.getDataRange().getValues();
-  const now   = new Date();
+  const lock = LockService.getScriptLock();
 
-  Logger.log(`\n${"=".repeat(60)}`);
-  Logger.log(` TRAITEMENT AUSBILDUNG — ${formatDateDE(now)}`);
-  Logger.log(` Feuille: "${sheet.getName()}" — ${data.length - 1} ligne(s)`);
-  Logger.log(`${"=".repeat(60)}\n`);
+  try {
+    lock.waitLock(30000);
 
-  if (data.length <= 1) {
-    Logger.log("⚠️ Feuille vide ou en-tête uniquement. Rien à traiter.");
-    return;
-  }
+    const sheet = getSheet();
+    const data = sheet.getDataRange().getValues();
+    const now = new Date();
 
-  // Un envoi n'est compté que si GmailApp.sendEmail() termine sans erreur.
-  // Les lignes sans email valide sont ignorées et ne consomment PAS le quota.
-  const quotaRestant = MailApp.getRemainingDailyQuota();
-  if (quotaRestant < CONFIG.BATCH_LIMIT) {
-    Logger.log(`⚠️ Quota Gmail restant insuffisant : ${quotaRestant}. Objectif : ${CONFIG.BATCH_LIMIT}. Aucun batch lancé.`);
-    return;
-  }
-
-  let compteur = 0;
-  const emailsEnvoyesCetteExecution = new Set();
-
-  for (let i = 1; i < data.length && compteur < CONFIG.BATCH_LIMIT; i++) {
-    if (compteur >= CONFIG.BATCH_LIMIT) {
-      Logger.log(`🛑 Quota de ${CONFIG.BATCH_LIMIT} envois atteint pour cette exécution.`);
-      break;
+    if (data.length <= 1) {
+      Logger.log("⚠️ Sheet vide.");
+      return;
     }
 
-    const row        = data[i];
-    const statut     = String(row[COL.STATUT]     || "").trim();
-    const roleCible  = String(row[COL.ROLE_CIBLE] || "").trim();
-    const intitule   = String(row[COL.INTITULE]   || "").trim();
-    const entreprise = String(row[COL.ENTREPRISE] || "").trim() || "Unternehmen Deutschland";
-    const emailsRh   = String(row[COL.EMAILS_RH]  || "").trim();
-    const dateEnvoi  = row[COL.DATE_ENVOI] ? new Date(row[COL.DATE_ENVOI]) : null;
-    const rowNum     = i + 1;
-
-    // ── Filtre email valide ────────────────────────────────────────────────
-    if (!isValidEmail(emailsRh)) {
-      Logger.log(`⏭️ Ligne ${rowNum} ignorée : email invalide ou absent ('${emailsRh}')`);
-      continue;
+    // Quota réel restant. Google impose des quotas quotidiens variables
+    // selon le type de compte : on ne tente jamais de dépasser le quota.
+    const quotaRestant = MailApp.getRemainingDailyQuota();
+    if (quotaRestant <= 0) {
+      Logger.log("🛑 Plus aucun quota email aujourd'hui.");
+      return;
     }
 
-    const emailCible = extractFirstEmail(emailsRh);
-    if (!emailCible || !isValidEmail(emailCible)) {
-      Logger.log(`⏭️ Ligne ${rowNum} ignorée : aucun email valide (${emailsRh})`);
-      continue;
-    }
+    const limite = Math.min(CONFIG.BATCH_LIMIT, quotaRestant);
+    let compteur = 0;
 
-    const emailKey = emailCible.toLowerCase();
-    if (emailsEnvoyesCetteExecution.has(emailKey)) {
-      Logger.log(`⏭️ Ligne ${rowNum} ignorée : email déjà utilisé cette exécution (${emailCible})`);
-      continue;
-    }
+    // Historique PERSISTANT : protège contre un second envoi au même email
+    // même si la ligne change de statut ou si un nouveau job apparaît.
+    const { sentEmails } = buildSheetIndexes(data);
 
-    // ── CAS 1 : CANDIDATURE INITIALE ─────────────────────────────────────
-    if (statut === "NOUVEAU") {
-      const cvFile = getCV(intitule, roleCible);
+    // Une seule candidature par email pendant cette exécution également.
+    const emailsEnvoyesCetteExecution = new Set();
 
-      if (!cvFile) {
-        Logger.log(`⚠️ Ligne ${rowNum} ignorée : CV introuvable pour "${intitule}"`);
+    // Cache des CV pour éviter de relire Drive 30 fois.
+    const cvCache = {};
+
+    for (let i = 1; i < data.length && compteur < limite; i++) {
+      const row = data[i];
+
+      const statut = String(row[COL.STATUT] || "").trim();
+      const roleCible = String(row[COL.ROLE_CIBLE] || "").trim();
+      const intitule = String(row[COL.INTITULE] || "").trim();
+      const entreprise = String(row[COL.ENTREPRISE] || "").trim() || "Unternehmen Deutschland";
+      const emailCible = extractFirstEmail(row[COL.EMAILS_RH] || "");
+      const dateEnvoi = row[COL.DATE_ENVOI] ? new Date(row[COL.DATE_ENVOI]) : null;
+      const rowNum = i + 1;
+
+      if (!emailCible || !isValidEmail(emailCible)) {
         continue;
       }
 
-      const { titrePoste, body } = genererEmailCandidature(entreprise, intitule, roleCible);
-      const sujet = `Bewerbung um einen Ausbildungsplatz als ${titrePoste} – ${CONFIG.NOM}`;
-
-      try {
-        GmailApp.sendEmail(emailCible, sujet, "", {
-          htmlBody: body,
-          attachments: [cvFile.getAs(MimeType.PDF)],
-          name: CONFIG.NOM,
-          replyTo: CONFIG.EMAIL,
-        });
-
-        sheet.getRange(rowNum, COL.STATUT + 1).setValue("CANDIDATURE_ENVOYEE");
-        sheet.getRange(rowNum, COL.DATE_ENVOI + 1).setValue(new Date());
-        compteur++;
-        emailsEnvoyesCetteExecution.add(emailKey);
-
-        Logger.log(`✅ ENVOI RÉUSSI #${compteur}/${CONFIG.BATCH_LIMIT} (ligne ${rowNum})`);
-        Logger.log(`   → Entreprise : ${entreprise}`);
-        Logger.log(`   → Email      : ${emailCible}`);
-        Logger.log(`   → CV joint   : ${cvFile.getName()}`);
-
-      } catch (err) {
-        Logger.log(`❌ ERREUR ENVOI (ligne ${rowNum} / ${emailCible}): ${err.toString()}`);
-      }
-    }
-
-    // ── CAS 2 : RELANCE 48H ───────────────────────────────────────────────
-    else if (statut === "CANDIDATURE_ENVOYEE" && dateEnvoi) {
-      const diffHeures = (now - dateEnvoi) / (1000 * 60 * 60);
-
-      if (diffHeures < CONFIG.DELAI_RELANCE_H) {
-        Logger.log(`⏳ Ligne ${rowNum} : Envoyée il y a ${Math.round(diffHeures)}h (relance à ${CONFIG.DELAI_RELANCE_H}h)`);
+      // Protection permanente : une adresse déjà utilisée ne reçoit plus
+      // jamais une nouvelle candidature.
+      if (sentEmails.has(emailCible)) {
+        Logger.log("⏭️ Email déjà utilisé historiquement : " + emailCible);
         continue;
       }
 
-      const cvFile = getCV(intitule, roleCible);
-      const { titrePoste, body } = genererEmailRelance(entreprise, intitule, roleCible);
-      const sujet = `Nachfassaktion – Bewerbung als ${titrePoste} – ${CONFIG.NOM}`;
+      if (emailsEnvoyesCetteExecution.has(emailCible)) {
+        continue;
+      }
 
-      try {
-        GmailApp.sendEmail(emailCible, sujet, "", {
-          htmlBody: body,
-          attachments: cvFile ? [cvFile.getAs(MimeType.PDF)] : [],
-          name: CONFIG.NOM,
-          replyTo: CONFIG.EMAIL,
-        });
+      // ── CANDIDATURE INITIALE ────────────────────────────────────────────
+      if (statut === "NOUVEAU") {
+        const specialite = detecterSpecialite(intitule, roleCible);
 
-        sheet.getRange(rowNum, COL.STATUT + 1).setValue("RELANCE_EFFECTUEE");
-        sheet.getRange(rowNum, COL.DATE_RELANCE + 1).setValue(new Date());
-        compteur++;
-        emailsEnvoyesCetteExecution.add(emailKey);
+        if (!(specialite in cvCache)) {
+          cvCache[specialite] = getCV(intitule, roleCible);
+        }
 
-        Logger.log(`🔄 RELANCE RÉUSSIE #${compteur}/${CONFIG.BATCH_LIMIT} (ligne ${rowNum})`);
-        Logger.log(`   → Entreprise : ${entreprise}`);
-        Logger.log(`   → Email      : ${emailCible}`);
-        Logger.log(`   → Délai réel : ${Math.round(diffHeures)}h`);
+        const cvFile = cvCache[specialite];
 
-      } catch (err) {
-        Logger.log(`❌ ERREUR RELANCE (ligne ${rowNum} / ${emailCible}): ${err.toString()}`);
+        if (!cvFile) {
+          Logger.log("⏭️ Ligne " + rowNum + " : CV manquant pour " + specialite);
+          continue;
+        }
+
+        const { titrePoste, body } = genererEmailCandidature(
+          entreprise, intitule, roleCible
+        );
+        const sujet = "Bewerbung um einen Ausbildungsplatz als " + titrePoste + " – " + CONFIG.NOM;
+
+        try {
+          GmailApp.sendEmail(emailCible, sujet, "", {
+            htmlBody: body,
+            attachments: [cvFile.getAs(MimeType.PDF)],
+            name: CONFIG.NOM,
+            replyTo: CONFIG.EMAIL,
+          });
+
+          sheet.getRange(rowNum, COL.STATUT + 1).setValue("CANDIDATURE_ENVOYEE");
+          sheet.getRange(rowNum, COL.DATE_ENVOI + 1).setValue(new Date());
+
+          compteur++;
+          emailsEnvoyesCetteExecution.add(emailCible);
+          sentEmails.add(emailCible);
+
+          Logger.log("✅ ENVOI #" + compteur + "/" + limite + " → " + emailCible);
+
+          if (compteur < limite) {
+            Utilities.sleep(CONFIG.DELAI_ENTRE_EMAILS_MS);
+          }
+
+        } catch (err) {
+          Logger.log("❌ ERREUR ENVOI ligne " + rowNum + " / " + emailCible + ": " + err.toString());
+        }
+
+        continue;
+      }
+
+      // ── RELANCE 48H ─────────────────────────────────────────────────────
+      if (statut === "CANDIDATURE_ENVOYEE" && dateEnvoi) {
+        const diffHeures = (now - dateEnvoi) / (1000 * 60 * 60);
+
+        if (diffHeures < CONFIG.DELAI_RELANCE_H) {
+          continue;
+        }
+
+        // IMPORTANT : si on relance, on autorise explicitement cette adresse
+        // une seconde fois. C'est la seule exception à la règle "pas de
+        // candidature initiale deux fois".
+        const specialite = detecterSpecialite(intitule, roleCible);
+
+        if (!(specialite in cvCache)) {
+          cvCache[specialite] = getCV(intitule, roleCible);
+        }
+
+        const cvFile = cvCache[specialite];
+        const { titrePoste, body } = genererEmailRelance(
+          entreprise, intitule, roleCible
+        );
+        const sujet = "Nachfassaktion – Bewerbung als " + titrePoste + " – " + CONFIG.NOM;
+
+        try {
+          GmailApp.sendEmail(emailCible, sujet, "", {
+            htmlBody: body,
+            attachments: cvFile ? [cvFile.getAs(MimeType.PDF)] : [],
+            name: CONFIG.NOM,
+            replyTo: CONFIG.EMAIL,
+          });
+
+          sheet.getRange(rowNum, COL.STATUT + 1).setValue("RELANCE_EFFECTUEE");
+          sheet.getRange(rowNum, COL.DATE_RELANCE + 1).setValue(new Date());
+
+          compteur++;
+          emailsEnvoyesCetteExecution.add(emailCible);
+
+          Logger.log("🔄 RELANCE #" + compteur + "/" + limite + " → " + emailCible);
+
+          if (compteur < limite) {
+            Utilities.sleep(CONFIG.DELAI_ENTRE_EMAILS_MS);
+          }
+
+        } catch (err) {
+          Logger.log("❌ ERREUR RELANCE ligne " + rowNum + " / " + emailCible + ": " + err.toString());
+        }
       }
     }
-  }
 
-  Logger.log(`\n${"=".repeat(60)}`);
-  Logger.log(` FIN DU TRAITEMENT — ${compteur} email(s) envoyé(s) cette session`);
-  Logger.log(`${"=".repeat(60)}\n`);
+    Logger.log("FIN — " + compteur + " email(s) envoyé(s), limite de cette heure: " + limite);
+
+  } catch (error) {
+    Logger.log("[TRAITEMENT] Erreur: " + error.toString());
+  } finally {
+    try { lock.releaseLock(); } catch (_) {}
+  }
 }
+
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -546,7 +753,7 @@ function configurerDeclencheurs() {
     .create();
 
   Logger.log("✅ Trigger horaire installé : 'traiterAusbildungCandidatures' sera exécuté toutes les heures.");
-  Logger.log("   → Le système enverra des candidatures et relances automatiquement 24h/24.");
+  Logger.log("   → Jusqu'à 30 envois valides par exécution horaire, dans la limite du quota Gmail.");
 }
 
 /**
