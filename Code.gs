@@ -202,11 +202,27 @@ function doGet() {
 }
 
 function doPost(e) {
+  // Parse the request BEFORE taking the script lock. JSON parsing does not touch
+  // the spreadsheet and therefore should never block other webhook executions.
+  let rawData;
+  try {
+    rawData = JSON.parse(e.postData.contents);
+  } catch (error) {
+    return ContentService
+      .createTextOutput(JSON.stringify({
+        status: "error",
+        message: "JSON invalide: " + error.toString()
+      }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
   const lock = LockService.getScriptLock();
   try {
-    lock.waitLock(30000);
+    // Keep the critical section short. The Python scraper sends small batches,
+    // and all Sheet writes below are batched instead of appendRow()/setValue()
+    // calls inside large loops.
+    lock.waitLock(25000);
 
-    const rawData = JSON.parse(e.postData.contents);
     const sheet = getSheet();
     const allData = sheet.getDataRange().getValues();
     const { existingIds, existingEmails } = buildSheetIndexes(allData);
@@ -214,15 +230,17 @@ function doPost(e) {
     // ── MODE UPDATE : enrichissement email/site depuis le scraper ─────────
     if (rawData && rawData.action === "update") {
       const jobs = Array.isArray(rawData.jobs) ? rawData.jobs : [];
+      const idToRow = new Map();
+
+      for (let i = 1; i < allData.length; i++) {
+        const id = String(allData[i][COL.ID] || "").trim();
+        if (id) idToRow.set(id, i); // 0-based index in allData
+      }
+
       let updated = 0;
       let duplicateEmails = 0;
       let missingIds = 0;
-
-      const idToRow = new Map();
-      for (let i = 1; i < allData.length; i++) {
-        const id = String(allData[i][COL.ID] || "").trim();
-        if (id) idToRow.set(id, i + 1);
-      }
+      let changed = false;
 
       for (const job of jobs) {
         const jobId = String(job.id || "").trim();
@@ -231,42 +249,32 @@ function doPost(e) {
           continue;
         }
 
-        const rowNum = idToRow.get(jobId);
-        const currentEmail = extractFirstEmail(sheet.getRange(rowNum, COL.EMAILS_RH + 1).getValue());
+        const rowIndex = idToRow.get(jobId);
+        const currentEmail = extractFirstEmail(allData[rowIndex][COL.EMAILS_RH] || "");
         const newEmail = extractFirstEmail(job.emails_rh || "");
 
-        // Le Sheet actuel n'a pas de colonne site_entreprise dédiée.
-        // On met donc à jour uniquement l'email ici afin de ne jamais écraser l'ID.
-        // Le site reste disponible côté scraper/logs.
+        if (!newEmail || currentEmail === newEmail) continue;
 
-        // Ajouter l'email uniquement s'il est valide et réellement unique.
-        if (newEmail) {
-          if (!currentEmail || currentEmail === newEmail) {
-            if (!currentEmail) {
-              if (existingEmails.has(newEmail)) {
-                duplicateEmails++;
-                Logger.log("[UPDATE] Email déjà présent ailleurs, ignoré : " + newEmail);
-              } else {
-                sheet.getRange(rowNum, COL.EMAILS_RH + 1).setValue(newEmail);
-                existingEmails.add(newEmail);
-                updated++;
-              }
-            }
-          } else if (currentEmail !== newEmail) {
-            if (existingEmails.has(newEmail)) {
-              duplicateEmails++;
-              Logger.log("[UPDATE] Nouveau email déjà utilisé ailleurs, ignoré : " + newEmail);
-            } else {
-              sheet.getRange(rowNum, COL.EMAILS_RH + 1).setValue(newEmail);
-              existingEmails.delete(currentEmail);
-              existingEmails.add(newEmail);
-              updated++;
-            }
-          }
+        if (existingEmails.has(newEmail) && newEmail !== currentEmail) {
+          duplicateEmails++;
+          continue;
         }
+
+        allData[rowIndex][COL.EMAILS_RH] = newEmail;
+        if (currentEmail) existingEmails.delete(currentEmail);
+        existingEmails.add(newEmail);
+        updated++;
+        changed = true;
       }
 
-      Logger.log("[UPDATE] " + updated + " email(s)/site(s) mis à jour | doublons email ignorés: " + duplicateEmails + " | IDs inconnus: " + missingIds);
+      // One batched write for the whole existing data range. This is vastly
+      // faster than thousands of individual getRange().setValue() calls.
+      if (changed && allData.length > 1) {
+        sheet.getRange(1, 1, allData.length, allData[0].length).setValues(allData);
+      }
+
+      Logger.log("[UPDATE] " + updated + " email(s) mis à jour | doublons email ignorés: " +
+        duplicateEmails + " | IDs inconnus: " + missingIds);
 
       return ContentService
         .createTextOutput(JSON.stringify({
@@ -281,7 +289,8 @@ function doPost(e) {
 
     // ── MODE INSERT : une offre = un ID unique ET un email unique ─────────
     const jobs = Array.isArray(rawData) ? rawData : [rawData];
-    let added = 0;
+    const rowsToAppend = [];
+
     let duplicateIds = 0;
     let duplicateEmails = 0;
     let invalidEmails = 0;
@@ -295,8 +304,6 @@ function doPost(e) {
         continue;
       }
 
-      // Le Sheet est volontairement un carnet de contacts unique :
-      // aucune ligne sans email valide et aucun email répété.
       if (!email) {
         invalidEmails++;
         continue;
@@ -307,7 +314,7 @@ function doPost(e) {
         continue;
       }
 
-      sheet.appendRow([
+      rowsToAppend.push([
         job.date_detection || new Date().toISOString(),
         job.statut || "NOUVEAU",
         job.role_cible || "",
@@ -322,19 +329,26 @@ function doPost(e) {
         "",
       ]);
 
+      // Prevent duplicates inside the SAME request.
       existingIds.add(jobId);
       existingEmails.add(email);
-      added++;
     }
 
-    Logger.log("[INSERT] " + added + " ajoutées | IDs doublons: " + duplicateIds +
+    // One setValues() call instead of appendRow() for every job.
+    if (rowsToAppend.length) {
+      const firstRow = sheet.getLastRow() + 1;
+      sheet.getRange(firstRow, 1, rowsToAppend.length, rowsToAppend[0].length)
+        .setValues(rowsToAppend);
+    }
+
+    Logger.log("[INSERT] " + rowsToAppend.length + " ajoutées | IDs doublons: " + duplicateIds +
       " | emails doublons: " + duplicateEmails + " | emails invalides/absents: " + invalidEmails);
 
     return ContentService
       .createTextOutput(JSON.stringify({
         status: "success",
         action: "insert",
-        added: added,
+        added: rowsToAppend.length,
         duplicate_ids: duplicateIds,
         duplicate_emails: duplicateEmails,
         invalid_emails: invalidEmails
@@ -353,7 +367,6 @@ function doPost(e) {
     try { lock.releaseLock(); } catch (_) {}
   }
 }
-
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MAPPING CV — SÉLECTION PAR SPÉCIALITÉ KAUFFRAU
