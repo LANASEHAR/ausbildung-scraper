@@ -167,6 +167,40 @@ function formatDateDE(date) {
  * Appelé automatiquement par ausbildung_scraper.py via GOOGLE_SHEET_WEBHOOK_URL.
  * Insère uniquement les nouvelles offres (déduplication par ID colonne J).
  */
+function testerDoPost() {
+  const testPayload = [{
+    id: "TEST_MANUEL_" + new Date().getTime(),
+    date_detection: new Date().toISOString(),
+    statut: "NOUVEAU",
+    role_cible: "Groß- und Außenhandelsmanagement",
+    intitule: "Ausbildung Kauffrau im Groß- und Außenhandelsmanagement",
+    entreprise: "TEST – NE PAS CONTACTER",
+    lieu: "Deutschland",
+    emails_rh: "test@example.org",
+    source: "TEST MANUEL",
+    lien: ""
+  }];
+  const fakeEvent = {
+    postData: {
+      contents: JSON.stringify(testPayload),
+      type: "application/json"
+    }
+  };
+  const result = doPost(fakeEvent);
+  Logger.log(result.getContent());
+  return result.getContent();
+}
+
+function doGet() {
+  return ContentService
+    .createTextOutput(JSON.stringify({
+      status: "ok",
+      service: "Ausbildung webhook",
+      message: "Webhook actif. Utiliser POST pour envoyer les offres."
+    }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
 function doPost(e) {
   const lock = LockService.getScriptLock();
   try {
