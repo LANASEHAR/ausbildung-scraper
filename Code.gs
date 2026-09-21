@@ -201,10 +201,9 @@ function doPost(e) {
         const currentEmail = extractFirstEmail(sheet.getRange(rowNum, COL.EMAILS_RH + 1).getValue());
         const newEmail = extractFirstEmail(job.emails_rh || "");
 
-        // Toujours permettre la mise à jour du site officiel.
-        if (job.site_entreprise) {
-          sheet.getRange(rowNum, COL.SOURCE + 2).setValue(job.site_entreprise);
-        }
+        // Le Sheet actuel n'a pas de colonne site_entreprise dédiée.
+        // On met donc à jour uniquement l'email ici afin de ne jamais écraser l'ID.
+        // Le site reste disponible côté scraper/logs.
 
         // Ajouter l'email uniquement s'il est valide et réellement unique.
         if (newEmail) {
@@ -609,19 +608,20 @@ function traiterAusbildungCandidatures() {
         continue;
       }
 
-      // Protection permanente : une adresse déjà utilisée ne reçoit plus
-      // jamais une nouvelle candidature.
-      if (sentEmails.has(emailCible)) {
-        Logger.log("⏭️ Email déjà utilisé historiquement : " + emailCible);
-        continue;
-      }
-
+      // Protection permanente contre une DEUXIÈME CANDIDATURE INITIALE
+      // à la même adresse. Une relance 48h reste autorisée pour la ligne
+      // déjà envoyée.
       if (emailsEnvoyesCetteExecution.has(emailCible)) {
         continue;
       }
 
       // ── CANDIDATURE INITIALE ────────────────────────────────────────────
       if (statut === "NOUVEAU") {
+        if (sentEmails.has(emailCible)) {
+          Logger.log("⏭️ Candidature initiale déjà envoyée historiquement : " + emailCible);
+          continue;
+        }
+
         const specialite = detecterSpecialite(intitule, roleCible);
 
         if (!(specialite in cvCache)) {
