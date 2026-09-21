@@ -394,7 +394,15 @@ function detecterSpecialite(intitule, roleCible) {
 /**
  * Titre formel de l'Ausbildung selon la spécialité détectée.
  */
-function getTitreAusbildung(specialite) {
+function getTitreAusbildung(specialite, intitule) {
+  const text = String(intitule || "").toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  if (specialite === "einzelhandel" && text.includes("verkaufer")) {
+    return "Verkäuferin";
+  }
+
   const titres = {
     "buero":         "Kauffrau für Büromanagement",
     "ecommerce":     "Kauffrau im E-Commerce",
@@ -466,7 +474,7 @@ function getSignatureHTML() {
  */
 function genererEmailCandidature(entreprise, intitule, roleCible) {
   const specialite = detecterSpecialite(intitule, roleCible);
-  const titrePoste = getTitreAusbildung(specialite);
+  const titrePoste = getTitreAusbildung(specialite, intitule);
   const entrepriseDisplay = (entreprise && entreprise !== "Unternehmen Deutschland") ? entreprise : null;
 
   const salutation = entrepriseDisplay
