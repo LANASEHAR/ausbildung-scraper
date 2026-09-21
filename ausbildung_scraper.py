@@ -13,20 +13,36 @@ BASE_URL = "https://www.arbeitsagentur.de"
 SEARCH_URL = BASE_URL + "/jobsuche/suche"
 
 SEARCH_QUERIES = [
-    "Kaufmann/-frau", "Kaufmann", "Kauffrau", "Kaufleute",
-    "Kaufmann für Büromanagement", "Kauffrau für Büromanagement",
-    "Kaufmann im E-Commerce", "Kauffrau im E-Commerce",
-    "Kaufmann für Spedition und Logistikdienstleistung",
-    "Kauffrau für Spedition und Logistikdienstleistung",
-    "Kaufmann für Groß- und Außenhandelsmanagement",
-    "Kauffrau für Groß- und Außenhandelsmanagement",
-    "Kaufmann für Tourismus und Freizeit", "Kauffrau für Tourismus und Freizeit",
-    "Industriekaufmann", "Industriekauffrau",
+    # Priority 1 — strongest fit: wholesale / foreign trade
+    "Kaufmann für Groß- und Außenhandelsmanagement Ausbildung",
+    "Kauffrau für Groß- und Außenhandelsmanagement Ausbildung",
+    "Großhandelsmanagement Ausbildung",
+    "Außenhandelsmanagement Ausbildung",
+    "Groß- und Außenhandel Ausbildung",
+    # Priority 2 — forwarding / logistics services
+    "Kaufmann für Spedition und Logistikdienstleistung Ausbildung",
+    "Kauffrau für Spedition und Logistikdienstleistung Ausbildung",
+    "Spedition und Logistikdienstleistung Ausbildung",
+    "Kaufmann Spedition Ausbildung",
+    "Kauffrau Spedition Ausbildung",
+    # Priority 3 — warehouse logistics
+    "Fachkraft für Lagerlogistik Ausbildung",
+    "Fachkraft Lagerlogistik Ausbildung",
+    "Ausbildung Lagerlogistik",
+    "Ausbildung Logistik Lager",
+    # Priority 4 — retail / sales
+    "Verkäufer Ausbildung",
+    "Verkäuferin Ausbildung",
+    "Kaufmann im Einzelhandel Ausbildung",
+    "Kauffrau im Einzelhandel Ausbildung",
+    "Einzelhandel Ausbildung",
 ]
 
-TARGET_OFFERS = 800
-MAX_SEARCH_PAGES_PER_QUERY = 40
-MAX_DETAIL_PAGES = 1400
+# High-volume collection. We keep collecting until these ceilings are reached,
+# then sort the resulting offers newest -> oldest before sending them to Sheets.
+TARGET_OFFERS = 3000
+MAX_SEARCH_PAGES_PER_QUERY = 100
+MAX_DETAIL_PAGES = 5000
 DETAIL_WORKERS = 8
 DETAIL_TIMEOUT = 18
 
@@ -186,13 +202,42 @@ def collect_links():
     return links
 
 
+def extract_offer_date(text):
+    """Extract the Ausbildungsbeginn / posting date when available.
+    Returns ISO YYYY-MM-DD for reliable newest-first sorting, else empty.
+    """
+    patterns = [
+        r"(?:veröffentlicht|online seit|eingestellt am|aktualisiert am|aktualisiert)\s*:?\s*(\d{1,2}[./]\d{1,2}[./]\d{2,4})",
+        r"(?:beginn|ausbildungsbeginn|start)\s*:?\s*(\d{1,2}[./]\d{1,2}[./]\d{2,4})",
+    ]
+    for pattern in patterns:
+        m = re.search(pattern, text or "", re.I)
+        if not m:
+            continue
+        raw = m.group(1).replace("/", ".")
+        parts = raw.split(".")
+        if len(parts) == 3:
+            d, mo, y = parts
+            if len(y) == 2:
+                y = "20" + y
+            try:
+                return f"{int(y):04d}-{int(mo):02d}-{int(d):02d}"
+            except ValueError:
+                pass
+    return ""
+
+def job_sort_key(job):
+    # Missing dates go last. Stable tie-breakers make the Sheet deterministic.
+    return (job.get("date_offre") or "0000-00-00", job.get("date_detection") or "")
+
 def parse_detail(link):
     session = make_session(BASE_URL + "/jobsuche/")
     match = re.search(r"/jobsuche/jobdetail/([^/?#]+)", link)
     source_id = match.group(1) if match else hashlib.sha256(link.encode()).hexdigest()[:20]
     base = {
         "date_detection": time.strftime("%Y-%m-%d %H:%M"),
-        "statut": "NOUVEAU", "role_cible": "Ausbildung Kaufmann/Kauffrau",
+        "date_offre": "",
+        "statut": "NOUVEAU", "role_cible": "Ausbildung - priorisierte Logistik / Handel / Einzelhandel",
         "intitule": "Ausbildung Kaufmann/Kauffrau", "entreprise": "À vérifier",
         "lieu": "Deutschland", "emails_rh": "", "site_entreprise": "",
         "source": "Agentur für Arbeit - Ausbildung", "lien": link, "id": "aa_" + source_id,
@@ -229,8 +274,25 @@ def parse_detail(link):
             m = re.search(pattern, text, re.I)
             if m:
                 location = clean(m.group(1)); break
-        base.update({"intitule": title, "entreprise": company or "Entreprise non indiquée",
-                     "lieu": location, "emails_rh": email})
+        title_low = title.lower()
+        if "groß" in title_low or "außenhandel" in title_low or "großhandel" in title_low:
+            role = "Groß- und Außenhandelsmanagement"
+        elif "spedition" in title_low or "logistikdienstleistung" in title_low:
+            role = "Kauffrau/Kaufmann Spedition & Logistikdienstleistung"
+        elif "lagerlogistik" in title_low:
+            role = "Fachkraft für Lagerlogistik"
+        elif "einzelhandel" in title_low or "verkäufer" in title_low:
+            role = "Verkäufer/in / Einzelhandel"
+        else:
+            role = "Autre / vérifier"
+        base.update({
+            "intitule": title,
+            "entreprise": company or "Entreprise non indiquée",
+            "lieu": location,
+            "emails_rh": email,
+            "role_cible": role,
+            "date_offre": extract_offer_date(text),
+        })
         return base
     except requests.RequestException as exc:
         print(f"[!] détail inaccessible: {link} -> {exc}")
@@ -563,6 +625,20 @@ def main():
 
     links = collect_links()
     jobs = scrape_details(links)
+
+    # Keep only the five requested families and order newest offers first.
+    jobs = [
+        j for j in jobs
+        if j.get("role_cible") in {
+            "Groß- und Außenhandelsmanagement",
+            "Kauffrau/Kaufmann Spedition & Logistikdienstleistung",
+            "Fachkraft für Lagerlogistik",
+            "Verkäufer/in / Einzelhandel",
+        }
+    ]
+    jobs.sort(key=job_sort_key, reverse=True)
+    print("[OK] Priorités: Groß-/Außenhandel + Spedition/Logistik + Lagerlogistik + Einzelhandel")
+    print("[OK] Tri: offres les plus récentes en premier")
 
     # 1. Offers go to Sheets immediately after offer scraping.
     if jobs:
