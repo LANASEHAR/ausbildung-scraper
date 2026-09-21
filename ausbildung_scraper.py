@@ -68,7 +68,9 @@ DEEP_SEARCH_MAX_SEARCH_RESULTS = 8
 DEEP_SEARCH_DELAY = (0.15, 0.4)
 
 WEBHOOK_TIMEOUT = 180
-WEBHOOK_RETRIES = 3
+WEBHOOK_RETRIES = 4
+WEBHOOK_BATCH_SIZE = 250
+WEBHOOK_RETRY_DELAYS = (45, 90, 150)
 SEARCH_DELAY = (0.45, 1.0)
 DETAIL_DELAY = (0.25, 0.65)
 
@@ -771,28 +773,77 @@ def post_json(payload, label):
     webhook = os.environ.get("GOOGLE_SHEET_WEBHOOK_URL", "").strip()
     if not webhook:
         raise RuntimeError("GOOGLE_SHEET_WEBHOOK_URL manquant")
+
+    # Never send thousands of rows in one Apps Script request.
+    # A timed-out HTTP request does NOT guarantee that the Apps Script execution
+    # stopped; retrying the same huge payload can therefore create a lock storm.
+    if isinstance(payload, list) and len(payload) > WEBHOOK_BATCH_SIZE:
+        results = []
+        total = (len(payload) + WEBHOOK_BATCH_SIZE - 1) // WEBHOOK_BATCH_SIZE
+        for index in range(0, len(payload), WEBHOOK_BATCH_SIZE):
+            chunk = payload[index:index + WEBHOOK_BATCH_SIZE]
+            chunk_no = index // WEBHOOK_BATCH_SIZE + 1
+            print(f"[*] {label}: batch {chunk_no}/{total} ({len(chunk)} éléments)")
+            results.append(post_json(chunk, f"{label} — batch {chunk_no}/{total}"))
+        return results
+
+    if (
+        isinstance(payload, dict)
+        and isinstance(payload.get("jobs"), list)
+        and len(payload["jobs"]) > WEBHOOK_BATCH_SIZE
+    ):
+        jobs = payload["jobs"]
+        results = []
+        total = (len(jobs) + WEBHOOK_BATCH_SIZE - 1) // WEBHOOK_BATCH_SIZE
+        for index in range(0, len(jobs), WEBHOOK_BATCH_SIZE):
+            chunk = jobs[index:index + WEBHOOK_BATCH_SIZE]
+            chunk_payload = dict(payload)
+            chunk_payload["jobs"] = chunk
+            chunk_no = index // WEBHOOK_BATCH_SIZE + 1
+            print(f"[*] {label}: batch {chunk_no}/{total} ({len(chunk)} éléments)")
+            results.append(post_json(chunk_payload, f"{label} — batch {chunk_no}/{total}"))
+        return results
+
     session = make_session()
     last_error = None
+
     for attempt in range(1, WEBHOOK_RETRIES + 1):
         try:
             size = len(payload) if isinstance(payload, list) else len(payload.get("jobs", []))
             print(f"[*] {label}: {size} éléments | tentative {attempt}/{WEBHOOK_RETRIES}")
-            response = session.post(webhook, json=payload, timeout=(20, WEBHOOK_TIMEOUT), allow_redirects=True)
+
+            response = session.post(
+                webhook,
+                json=payload,
+                timeout=(20, WEBHOOK_TIMEOUT),
+                allow_redirects=True,
+            )
             print(f"[*] Webhook HTTP {response.status_code}")
             response.raise_for_status()
+
             try:
                 result = response.json()
             except ValueError:
                 result = {"raw": response.text[:1000]}
+
             print(f"[*] Réponse Apps Script: {result}")
+
             if isinstance(result, dict) and result.get("status") == "error":
                 raise RuntimeError("Google Apps Script: " + str(result.get("message")))
+
             return result
+
         except (requests.RequestException, RuntimeError) as exc:
             last_error = exc
             print(f"[!] {label} échoué: {exc}")
+
             if attempt < WEBHOOK_RETRIES:
-                time.sleep(8 * attempt)
+                # Wait long enough for a timed-out Apps Script execution to finish
+                # and release its script lock before retrying.
+                delay = WEBHOOK_RETRY_DELAYS[min(attempt - 1, len(WEBHOOK_RETRY_DELAYS) - 1)]
+                print(f"[*] Attente {delay}s avant nouvelle tentative...")
+                time.sleep(delay)
+
     raise RuntimeError(f"Webhook impossible après {WEBHOOK_RETRIES} tentatives: {last_error}")
 
 
