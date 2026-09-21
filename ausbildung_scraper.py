@@ -1,4 +1,6 @@
+import base64
 import hashlib
+import json
 import os
 import random
 import re
@@ -11,6 +13,17 @@ from bs4 import BeautifulSoup
 
 BASE_URL = "https://www.arbeitsagentur.de"
 SEARCH_URL = BASE_URL + "/jobsuche/suche"
+
+# Bundesagentur Jobsuche REST API.
+# The public client key is documented for the Jobsuche API and avoids
+# scraping the HTML frontend, which can return HTTP 403 after many pages.
+BA_API_BASE = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service"
+BA_API_SEARCH_URL = BA_API_BASE + "/pc/v4/jobs"
+BA_API_DETAILS_URL = BA_API_BASE + "/pc/v4/jobdetails"
+BA_API_KEY = "jobboerse-jobsuche"
+BA_API_SIZE = 100
+API_RETRIES = 5
+API_BACKOFF = (2.0, 4.0, 8.0, 16.0, 30.0)
 
 SEARCH_QUERIES = [
     # Priority 1 — strongest fit: wholesale / foreign trade
@@ -164,10 +177,78 @@ def extract_job_links(html):
 
 
 def search_page(session, query, page):
+    """
+    Legacy HTML search kept as a fallback only.
+    The primary collector uses the official Jobsuche REST API below.
+    """
     params = {"suchbereich": "ausbildung", "was": query, "wo": "Deutschland", "page": page}
     r = session.get(SEARCH_URL, params=params, timeout=DETAIL_TIMEOUT)
     r.raise_for_status()
     return extract_job_links(r.text)
+
+
+def api_headers():
+    return {
+        "X-API-Key": BA_API_KEY,
+        "Accept": "application/json",
+        "User-Agent": random.choice(USER_AGENTS),
+    }
+
+
+def api_search_page(session, query, page):
+    """
+    Search Ausbildung/Duales Studium through the Jobsuche REST API.
+    This avoids the HTML Jobsuche frontend 403 that starts appearing
+    around page 25+ during high-volume scraping.
+    """
+    params = {
+        "angebotsart": 4,       # Ausbildung / Duales Studium
+        "was": query,
+        "wo": "Deutschland",
+        "page": page,
+        "size": BA_API_SIZE,
+        "pav": "false",
+    }
+
+    last_exc = None
+    for attempt in range(API_RETRIES):
+        try:
+            session.headers.update(api_headers())
+            r = session.get(BA_API_SEARCH_URL, params=params, timeout=DETAIL_TIMEOUT)
+            if r.status_code in (403, 429):
+                # API can rate-limit sporadically. Back off instead of
+                # hammering the endpoint and losing the whole query.
+                wait = API_BACKOFF[min(attempt, len(API_BACKOFF) - 1)]
+                print(f"[!] BA API {r.status_code} page {page} — retry {attempt + 1}/{API_RETRIES} dans {wait:.0f}s")
+                time.sleep(wait)
+                continue
+            r.raise_for_status()
+            payload = r.json()
+            offers = payload.get("stellenangebote") or []
+
+            links = []
+            for offer in offers:
+                refnr = clean(
+                    offer.get("refnr")
+                    or offer.get("referenznummer")
+                    or offer.get("referenzNr")
+                    or ""
+                )
+                if not refnr:
+                    continue
+                # Internal pseudo-link: parse_detail() will retrieve the
+                # complete record through the API using the refnr.
+                links.append("aaapi://" + base64.urlsafe_b64encode(refnr.encode()).decode())
+            return links
+        except (requests.RequestException, ValueError) as exc:
+            last_exc = exc
+            if attempt < API_RETRIES - 1:
+                wait = API_BACKOFF[min(attempt, len(API_BACKOFF) - 1)]
+                time.sleep(wait)
+
+    if last_exc:
+        raise last_exc
+    return []
 
 
 def collect_links():
@@ -178,12 +259,12 @@ def collect_links():
             break
         print(f"[+] AUSBILDUNG Recherche: {query}")
         empty_pages = 0
-        for page in range(MAX_SEARCH_PAGES_PER_QUERY):
+        for page in range(1, MAX_SEARCH_PAGES_PER_QUERY + 1):
             try:
-                batch = search_page(session, query, page)
+                batch = api_search_page(session, query, page)
             except requests.RequestException as exc:
-                print(f"[!] Ausbildung recherche échouée {query} page {page}: {exc}")
-                time.sleep(random.uniform(2.0, 4.0))
+                print(f"[!] BA API recherche échouée {query} page {page}: {exc}")
+                time.sleep(random.uniform(3.0, 6.0))
                 continue
             new_count = 0
             for link in batch:
@@ -232,6 +313,128 @@ def job_sort_key(job):
 
 def parse_detail(link):
     session = make_session(BASE_URL + "/jobsuche/")
+
+    # Primary path: official Jobsuche API.
+    if link.startswith("aaapi://"):
+        encoded_ref = link[len("aaapi://"):]
+        base = {
+            "date_detection": time.strftime("%Y-%m-%d %H:%M"),
+            "date_offre": "",
+            "statut": "NOUVEAU",
+            "role_cible": "Ausbildung - priorisierte Logistik / Handel / Einzelhandel",
+            "intitule": "Ausbildung Kaufmann/Kauffrau",
+            "entreprise": "À vérifier",
+            "lieu": "Deutschland",
+            "emails_rh": "",
+            "site_entreprise": "",
+            "source": "Agentur für Arbeit - Ausbildung",
+            "lien": "",
+            "id": "aa_" + hashlib.sha256(encoded_ref.encode()).hexdigest()[:20],
+        }
+        try:
+            refnr = base64.urlsafe_b64decode(encoded_ref.encode()).decode()
+            encrypted = base64.b64encode(refnr.encode()).decode()
+            last_exc = None
+
+            for attempt in range(API_RETRIES):
+                try:
+                    session.headers.update(api_headers())
+                    r = session.get(
+                        f"{BA_API_DETAILS_URL}/{encrypted}",
+                        timeout=DETAIL_TIMEOUT,
+                    )
+                    if r.status_code in (403, 429):
+                        wait = API_BACKOFF[min(attempt, len(API_BACKOFF) - 1)]
+                        print(f"[!] BA API détails {r.status_code} — retry {attempt + 1}/{API_RETRIES} dans {wait:.0f}s")
+                        time.sleep(wait)
+                        continue
+                    r.raise_for_status()
+                    details = r.json()
+                    last_exc = None
+                    break
+                except (requests.RequestException, ValueError) as exc:
+                    last_exc = exc
+                    if attempt < API_RETRIES - 1:
+                        wait = API_BACKOFF[min(attempt, len(API_BACKOFF) - 1)]
+                        time.sleep(wait)
+
+            if last_exc:
+                raise last_exc
+
+            title = clean(
+                details.get("stellenangebotsTitel")
+                or details.get("titel")
+                or details.get("beruf")
+                or base["intitule"]
+            )
+            company = clean(details.get("arbeitgeber") or "Entreprise non indiquée")
+
+            locations = details.get("arbeitsorte") or []
+            location = "Deutschland"
+            if locations:
+                loc = locations[0] or {}
+                location = clean(" ".join(
+                    x for x in [loc.get("ort"), loc.get("region"), loc.get("land")]
+                    if x
+                )) or "Deutschland"
+
+            # Search the complete JSON for public emails present in the
+            # official job details response.
+            email = first_email(json.dumps(details, ensure_ascii=False))
+
+            published = (
+                details.get("aktuelleVeroeffentlichungsdatum")
+                or details.get("ersteVeroeffentlichungsdatum")
+                or ""
+            )
+            description = clean(
+                details.get("stellenangebotsBeschreibung")
+                or details.get("stellenbeschreibung")
+                or ""
+            )
+
+            title_low = title.lower()
+            combined = (title_low + " " + description.lower())
+            if "lagerlogistik" in combined or ("lager" in combined and "logistik" in combined):
+                role = "Fachkraft für Lagerlogistik"
+            elif "einzelhandel" in combined or "verkäufer" in combined or "verkaufer" in combined:
+                role = "Verkäufer/in / Einzelhandel"
+            elif "spedition" in combined or "logistikdienstleistung" in combined:
+                role = "Kauffrau/Kaufmann Spedition & Logistikdienstleistung"
+            elif any(x in combined for x in ("groß", "gross", "außenhandel", "aussenhandel", "großhandel", "grosshandel")):
+                role = "Groß- und Außenhandelsmanagement"
+            else:
+                role = "Autre / vérifier"
+
+            external_url = clean(
+                details.get("externeUrl")
+                or details.get("allianzpartnerUrl")
+                or ""
+            )
+
+            base.update({
+                "date_offre": published,
+                "intitule": title,
+                "entreprise": company,
+                "lieu": location,
+                "emails_rh": email,
+                "role_cible": role,
+                "lien": external_url,
+                "description": description,
+                "id": "aa_" + clean(details.get("refnr") or details.get("referenznummer") or refnr),
+            })
+            return base
+
+        except requests.RequestException as exc:
+            print(f"[!] détail API inaccessible: {refnr if 'refnr' in locals() else encoded_ref} -> {exc}")
+            return base
+        except Exception as exc:
+            print(f"[!] parsing API erreur: {exc}")
+            return base
+        finally:
+            time.sleep(random.uniform(*DETAIL_DELAY))
+
+    # Legacy HTML fallback for any non-API link.
     match = re.search(r"/jobsuche/jobdetail/([^/?#]+)", link)
     source_id = match.group(1) if match else hashlib.sha256(link.encode()).hexdigest()[:20]
     base = {
@@ -259,13 +462,6 @@ def parse_detail(link):
             m = re.search(pattern, text, re.I)
             if m:
                 company = clean(m.group(1)); break
-        if not company:
-            lines = [clean(x) for x in soup.stripped_strings if clean(x)]
-            for i, line in enumerate(lines):
-                if line == title and i + 1 < len(lines):
-                    candidate = lines[i + 1]
-                    if 2 <= len(candidate) <= 180:
-                        company = candidate; break
         location = "Deutschland"
         for pattern in [
             r"Arbeitsort\s*:?[ ]+(.+?)(?:\s+Anstellungsart|\s+Angebotsart|\s+Beginn|$)",
@@ -302,7 +498,6 @@ def parse_detail(link):
         return base
     finally:
         time.sleep(random.uniform(*DETAIL_DELAY))
-
 
 def scrape_details(links):
     jobs = []
