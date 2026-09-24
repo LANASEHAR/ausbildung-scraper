@@ -18,12 +18,12 @@ SEARCH_URL = BASE_URL + "/jobsuche/suche"
 # The public client key is documented for the Jobsuche API and avoids
 # scraping the HTML frontend, which can return HTTP 403 after many pages.
 BA_API_BASE = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service"
-BA_API_SEARCH_URL = BA_API_BASE + "/pc/v4/jobs"
+BA_API_SEARCH_URL = BA_API_BASE + "/pc/v6/jobs"
 BA_API_DETAILS_URL = BA_API_BASE + "/pc/v4/jobdetails"
 BA_API_KEY = "jobboerse-jobsuche"
 BA_API_SIZE = 100
-API_RETRIES = 5
-API_BACKOFF = (2.0, 4.0, 8.0, 16.0, 30.0)
+API_RETRIES = 3
+API_BACKOFF = (2.0, 5.0, 10.0)
 
 SEARCH_QUERIES = [
     # Priority 1 — strongest fit: wholesale / foreign trade
@@ -209,7 +209,6 @@ def api_search_page(session, query, page):
         "wo": "Deutschland",
         "page": page,
         "size": BA_API_SIZE,
-        "pav": "false",
     }
 
     last_exc = None
@@ -238,9 +237,17 @@ def api_search_page(session, query, page):
                 )
                 if not refnr:
                     continue
-                # Internal pseudo-link: parse_detail() will retrieve the
-                # complete record through the API using the refnr.
-                links.append("aaapi://" + base64.urlsafe_b64encode(refnr.encode()).decode())
+                published = clean(
+                    offer.get("aktuelleVeroeffentlichungsdatum")
+                    or offer.get("ersteVeroeffentlichungsdatum")
+                    or ""
+                )
+                token = json.dumps(
+                    {"refnr": refnr, "published": published},
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                )
+                links.append("aaapi://" + base64.urlsafe_b64encode(token.encode()).decode())
             return links
         except (requests.RequestException, ValueError) as exc:
             last_exc = exc
@@ -281,6 +288,11 @@ def collect_links():
             if empty_pages >= 2 or len(links) >= MAX_DETAIL_PAGES:
                 break
             time.sleep(random.uniform(*SEARCH_DELAY))
+    if not links:
+        raise RuntimeError(
+            "BA Jobsuche API n'a retourné aucune offre. "
+            "Le workflow doit échouer au lieu d'envoyer un Sheet vide."
+        )
     print(f"[*] {len(links)} liens uniques AUSBILDUNG collectés.")
     return links
 
@@ -310,8 +322,11 @@ def extract_offer_date(text):
     return ""
 
 def job_sort_key(job):
-    # Missing dates go last. Stable tie-breakers make the Sheet deterministic.
-    return (job.get("date_offre") or "0000-00-00", job.get("date_detection") or "")
+    # Primary order: first publication date, newest -> oldest.
+    raw = clean(job.get("date_offre"))
+    match = re.search(r"(\d{4}-\d{2}-\d{2})", raw)
+    date_key = match.group(1) if match else "0000-00-00"
+    return (date_key, job.get("date_detection") or "", job.get("id") or "")
 
 def parse_detail(link):
     session = make_session(BASE_URL + "/jobsuche/")
@@ -334,7 +349,13 @@ def parse_detail(link):
             "id": "aa_" + hashlib.sha256(encoded_ref.encode()).hexdigest()[:20],
         }
         try:
-            refnr = base64.urlsafe_b64decode(encoded_ref.encode()).decode()
+            decoded = base64.urlsafe_b64decode(encoded_ref.encode()).decode()
+            try:
+                token = json.loads(decoded)
+                refnr = clean(token.get("refnr"))
+                base["date_offre"] = clean(token.get("published"))
+            except (json.JSONDecodeError, AttributeError):
+                refnr = decoded
             encrypted = base64.b64encode(refnr.encode()).decode()
             last_exc = None
 
@@ -385,8 +406,9 @@ def parse_detail(link):
             email = first_email(json.dumps(details, ensure_ascii=False))
 
             published = (
-                details.get("aktuelleVeroeffentlichungsdatum")
-                or details.get("ersteVeroeffentlichungsdatum")
+                details.get("ersteVeroeffentlichungsdatum")
+                or details.get("aktuelleVeroeffentlichungsdatum")
+                or base.get("date_offre")
                 or ""
             )
             description = clean(
@@ -872,7 +894,7 @@ def main():
     links = collect_links()
     jobs = scrape_details(links)
 
-    # Keep only the five requested families and order newest offers first.
+    # Keep only the requested families and order by FIRST PUBLICATION date.
     jobs = [
         j for j in jobs
         if j.get("role_cible") in {
@@ -884,7 +906,7 @@ def main():
     ]
     jobs.sort(key=job_sort_key, reverse=True)
     print("[OK] Priorités: Groß-/Außenhandel + Spedition/Logistik + Lagerlogistik + Einzelhandel")
-    print("[OK] Tri: offres les plus récentes en premier")
+    print("[OK] Tri: PREMIÈRE DATE DE PUBLICATION, plus récent -> plus ancien")
 
     # 1. Offers go to Sheets immediately after offer scraping.
     if jobs:
