@@ -574,27 +574,27 @@ function genererEmailCandidature(entreprise, intitule, roleCible) {
   // qui donne au recruteur une vraie raison de vouloir en savoir davantage.
   const motivationParSpecialite = {
     "buero": `
-mit großem Interesse bewerbe ich mich um einen Ausbildungsplatz als <strong>${titrePoste}</strong> in ${entrepriseDisplay}.
+mit großem Interesse bewerbe ich mich um einen Ausbildungsplatz als <strong>${titrePoste}</strong> bei ${entrepriseDisplay}.
 
 Was mich an diesem Beruf besonders anspricht, ist die Verbindung aus Organisation, Kommunikation und Verantwortung. Ich arbeite gerne dort, wo viele Aufgaben zusammenkommen, Prioritäten gesetzt werden müssen und gute Kommunikation den Unterschied macht.`,
 
     "ecommerce": `
-mit großem Interesse bewerbe ich mich um einen Ausbildungsplatz als <strong>${titrePoste}</strong> in ${entrepriseDisplay}.
+mit großem Interesse bewerbe ich mich um einen Ausbildungsplatz als <strong>${titrePoste}</strong> bei ${entrepriseDisplay}.
 
 Besonders spannend finde ich die Verbindung von Kunden, digitalen Prozessen und Handel. Durch meine bisherige Arbeit mit E-Commerce, Kundenkommunikation und digitalen Tools habe ich bereits erlebt, wie abwechslungsreich dieser Bereich ist – und möchte dieses Wissen nun fachlich vertiefen.`,
 
     "handel": `
-mit großem Interesse bewerbe ich mich um einen Ausbildungsplatz als <strong>${titrePoste}</strong> in ${entrepriseDisplay}.
+mit großem Interesse bewerbe ich mich um einen Ausbildungsplatz als <strong>${titrePoste}</strong> bei ${entrepriseDisplay}.
 
 Der internationale Handel interessiert mich besonders, weil er Kommunikation, Organisation und wirtschaftliches Denken miteinander verbindet. Die Zusammenarbeit mit Kunden und Geschäftspartnern in unterschiedlichen Märkten entspricht sehr gut meiner bisherigen internationalen Berufserfahrung.`,
 
     "spedition": `
-mit großem Interesse bewerbe ich mich um einen Ausbildungsplatz als <strong>${titrePoste}</strong> in ${entrepriseDisplay}.
+mit großem Interesse bewerbe ich mich um einen Ausbildungsplatz als <strong>${titrePoste}</strong> bei ${entrepriseDisplay}.
 
 An der Spedition und Logistik gefällt mir besonders, dass hinter jedem Auftrag ein konkreter Ablauf steht, der zuverlässig organisiert werden muss. Die Kombination aus Kundenkontakt, Koordination und internationalen Prozessen passt sehr gut zu meiner bisherigen Berufserfahrung.`,
 
     "tourismus": `
-mit großem Interesse bewerbe ich mich um einen Ausbildungsplatz als <strong>${titrePoste}</strong> in ${entrepriseDisplay}.
+mit großem Interesse bewerbe ich mich um einen Ausbildungsplatz als <strong>${titrePoste}</strong> bei ${entrepriseDisplay}.
 
 Die Verbindung aus Service, Kommunikation und internationalem Umfeld spricht mich besonders an. Durch meine Erfahrung im Kundenkontakt und meine Sprachkenntnisse bringe ich bereits eine gute Grundlage mit und möchte mich in diesem Beruf gezielt weiterentwickeln.`,
   };
@@ -606,7 +606,7 @@ Sehr geehrte Damen und Herren,
 
 ${motivation}
 
-Ich bringe <strong>mehr als fünf Jahre praktische Berufserfahrung</strong> in internationalen und kundenorientierten Arbeitsumgebungen mit. Dabei habe ich unter anderem in Customer Service, B2B-Kommunikation, E-Commerce, CRM, Auftragsbearbeitung und digitalen Arbeitsprozessen gearbeitet.
+Ich bringe <strong>mehr als 5 Jahre praktische Berufserfahrung</strong> in internationalen und kundenorientierten Arbeitsumgebungen mit. Dabei habe ich unter anderem in Customer Service, B2B-Kommunikation, E-Commerce, CRM, Auftragsbearbeitung und digitalen Arbeitsprozessen gearbeitet.
 
 Diese Erfahrung hat mir vor allem eines gezeigt: Ich lerne schnell, übernehme Verantwortung und arbeite am liebsten dort, wo ich mit Menschen, Informationen und konkreten Aufgaben etwas bewegen kann.
 
@@ -682,8 +682,8 @@ function traiterAusbildungCandidatures() {
     }
 
     // Le workflow tente jusqu'à CONFIG.BATCH_LIMIT messages par passage.
-    // Si Google impose une limite d'envoi, GmailApp.sendEmail() échoue pour le
-    // message concerné et l'erreur est journalisée sans bloquer les autres lignes.
+    // Les limites réelles du compte Google restent appliquées côté Gmail/Apps Script.
+    // Une erreur d'envoi est journalisée sans bloquer les autres lignes.
     const limite = CONFIG.BATCH_LIMIT;
     let compteur = 0;
 
