@@ -861,7 +861,7 @@ def scrape_details(links):
     finally:
         for future in pending:
             future.cancel()
-        executor.shutdown(wait=False, cancel_futures=True)
+        executor.shutdown(wait=True, cancel_futures=True)
 
     jobs = list({job["id"]: job for job in jobs}.values())
     print(f"[*] Offres finales: {len(jobs)} | avec email présent sur l'offre: {sum(1 for x in jobs if x.get('emails_rh'))}")
