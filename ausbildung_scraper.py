@@ -983,48 +983,6 @@ def main():
     print("[OK] Run terminé.")
 
 
-if __name__ == "__main__":
-    main(    # Keep Kaufmann/Kauffrau roles aligned with the target commercial profile.
-    # Warehouse-only "Fachkraft für Lagerlogistik" roles are excluded.
-    TARGET_ROLE_TERMS = (
-        "groß- und außenhandelsmanagement", "großhandel", "außenhandel", "aussenhandel",
-        "export", "import", "spedition", "logistikdienstleistung", "disposition",
-        "büromanagement", "e-commerce", "einzelhandel", "verkäufer", "verkaufer"
-    )
-    filtered = []
-    for j in jobs:
-        text = (clean(j.get("intitule", "")) + " " + clean(j.get("role_cible", ""))).lower()
-        if "fachkraft für lagerlogistik" in text or "fachkraft lagerlogistik" in text:
-            continue
-        if any(term in text for term in TARGET_ROLE_TERMS):
-            filtered.append(j)
-    jobs = filtered
-    jobs.sort(key=job_sort_key, reverse=True)
-    print("[OK] Priorités: Groß-/Außenhandel → Spedition/Logistik → Büro/E-Commerce → Einzelhandel")
-    print("[OK] Lager-only Fachkraft roles excluded")
-    print("[OK] Tri: PREMIÈRE DATE DE PUBLICATION, plus récent -> plus ancien")
-        # 1. Offers go to Sheets immediately after offer scraping.
-    if jobs:
-        send_to_sheet(jobs)
-        print("[OK] Offres envoyées au Sheet AVANT le deep search.")
-
-    # 2. Deep search runs after the first Sheet write, once per unique company.
-    jobs = enrich_missing_emails(jobs)
-
-    # 3. Only email/site fields are updated in existing rows.
-    update_sheet(jobs)
-
-    email_count = sum(1 for job in jobs if job.get("emails_rh"))
-    site_count = sum(1 for job in jobs if job.get("site_entreprise"))
-    if len(jobs) < TARGET_OFFERS:
-        print(f"[!] Objectif {TARGET_OFFERS} offres non atteint: {len(jobs)} offres.")
-    else:
-        print(f"[OK] Objectif offres atteint: {len(jobs)}")
-    print(f"[OK] Sites officiels vérifiés: {site_count}")
-    print(f"[OK] Emails publics vérifiés: {email_count}")
-    print("[OK] Run terminé.")
-
-
 
 if __name__ == "__main__":
     main()
