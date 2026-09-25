@@ -605,16 +605,8 @@ function traiterAusbildungCandidatures() {
     // Le workflow tente jusqu'à CONFIG.BATCH_LIMIT messages par passage.
     // Les limites réelles du compte Google restent appliquées côté Gmail/Apps Script.
     // Une erreur d'envoi est journalisée sans bloquer les autres lignes.
-    const quotaRestant = MailApp.getRemainingDailyQuota();
-    const limite = Math.min(CONFIG.BATCH_LIMIT, Math.max(0, quotaRestant));
+    const limite = CONFIG.BATCH_LIMIT;
     let compteur = 0;
-
-    Logger.log("Quota email restant aujourd'hui: " + quotaRestant + " | limite de cette exécution: " + limite);
-
-    if (limite <= 0) {
-      Logger.log("⏭️ Aucun quota email disponible pour cette exécution.");
-      return;
-    }
 
     // Historique PERSISTANT : protège contre un second envoi au même email
     // même si la ligne change de statut ou si un nouveau job apparaît.
