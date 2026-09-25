@@ -25,7 +25,7 @@
 const CONFIG={
   NOM:"Halima Essaouaf", EMAIL:"essaouafhalima@gmail.com", TEL:"+212619968131",
   LINKEDIN:"linkedin.com/in/halima-essaouaf-1b4b81202", NOM_ONGLET:"Ausbildung",
-  BATCH_LIMIT:100, DELAI_ENTRE_EMAILS_MS:1000, DELAI_RELANCE_H:48,
+  BATCH_LIMIT:100, DELAI_ENTRE_EMAILS_MS:250, DELAI_RELANCE_H:48, MAX_EXECUTION_MS:5*60*1000,
   CV_FOLDER_NAME:"New Bewerbung",
   CV_MAPPING:{
     hotelfachfrau:"Bewerbungsmappe_Hotelfachfrau_Halima_Essaouaf.pdf",
@@ -631,6 +631,7 @@ function traiterAusbildungCandidatures() {
     // Les limites réelles du compte Google restent appliquées côté Gmail/Apps Script.
     // Une erreur d'envoi est journalisée sans bloquer les autres lignes.
     const limite = CONFIG.BATCH_LIMIT;
+    const debutExecution = Date.now();
     let compteur = 0;
 
     // Historique PERSISTANT : protège contre un second envoi au même email
@@ -672,6 +673,10 @@ function traiterAusbildungCandidatures() {
     });
 
     for (const i of rowIndexes) {
+      if (Date.now() - debutExecution >= CONFIG.MAX_EXECUTION_MS) {
+        Logger.log("[TIME] Arrêt propre avant la limite Apps Script; le prochain trigger reprendra.");
+        break;
+      }
       if (compteur >= limite) break;
       const row = data[i];
 
@@ -736,7 +741,7 @@ function traiterAusbildungCandidatures() {
 
           Logger.log("✅ ENVOI #" + compteur + "/" + limite + " → " + emailCible);
 
-          if (compteur < limite) {
+          if (compteur < limite && CONFIG.DELAI_ENTRE_EMAILS_MS > 0) {
             Utilities.sleep(CONFIG.DELAI_ENTRE_EMAILS_MS);
           }
 
