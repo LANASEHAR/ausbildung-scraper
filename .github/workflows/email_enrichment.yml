@@ -34,8 +34,20 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests beautifulsoup4 lxml
 
-      - name: Validate Python syntax
-        run: python -m py_compile ausbildung_scraper.py email_enrichment.py
+      - name: Validate Python syntax and imports
+        env:
+          GOOGLE_SHEET_WEBHOOK_URL: ${{ secrets.GOOGLE_SHEET_WEBHOOK_URL }}
+        run: |
+          python -m py_compile ausbildung_scraper.py email_enrichment.py
+          python - <<'PY'
+          import os
+          import ausbildung_scraper as scraper
+          import email_enrichment
+          assert hasattr(scraper, "crawl_verified_site")
+          assert hasattr(email_enrichment, "exhaustive_company_search")
+          assert os.environ.get("GOOGLE_SHEET_WEBHOOK_URL"), "GOOGLE_SHEET_WEBHOOK_URL is missing"
+          print("Email enrichment preflight OK")
+          PY
 
       - name: Enrich missing emails from official company websites
         env:
