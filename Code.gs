@@ -5,7 +5,7 @@
  *
  * FONCTIONS PRINCIPALES :
  *   doPost(e)                        → Webhook INSERT + UPDATE avec déduplication par ID/email
- *   traiterAusbildungCandidatures()  → Envoi emails + relances 48h (max 30/run)
+ *   traiterAusbildungCandidatures()  → Envoi emails + relances 48h (max 100/run, quota Gmail)
  *   getCV(intitule, roleCible)        → Mapping CV par spécialité Kauffrau
  *   configurerDeclencheurs()          → Installe le trigger horaire automatique
  *
@@ -763,7 +763,7 @@ function configurerDeclencheurs() {
     .create();
 
   Logger.log("✅ Trigger horaire installé : 'traiterAusbildungCandidatures' sera exécuté toutes les heures.");
-  Logger.log("   → Jusqu'à 30 envois valides par exécution horaire, dans la limite du quota Gmail.");
+  Logger.log("   → Jusqu'à 100 envois valides par exécution horaire, dans la limite du quota Gmail.");
 }
 
 /**
