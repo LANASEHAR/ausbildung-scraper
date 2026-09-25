@@ -979,41 +979,75 @@ def verify_official_site(url, company):
 
 
 def site_pages_to_check(site):
-    """Return a small, high-value set of official-site pages."""
+    """Discover all relevant contact/career pages on the verified official domain."""
     root = site.rstrip("/") + "/"
     urls = [root]
     seen = {root}
     paths = (
         "/kontakt", "/contact", "/impressum", "/ansprechpartner",
         "/karriere", "/bewerbung", "/jobs", "/ausbildung",
+        "/karriere/jobs", "/karriere/ausbildung", "/stellenangebote",
+        "/jobs-karriere", "/bewerber", "/personal", "/hr",
+        "/kontakt/ansprechpartner", "/kontakt/bewerbung",
     )
     try:
-        r = requests.get(root, headers={"User-Agent": random.choice(USER_AGENTS)}, timeout=DEEP_SEARCH_TIMEOUT)
+        r = requests.get(
+            root,
+            headers={"User-Agent": random.choice(USER_AGENTS), "Accept-Language": "de-DE,de;q=0.9"},
+            timeout=DEEP_SEARCH_TIMEOUT,
+        )
         if r.ok:
             soup = BeautifulSoup(r.text, "html.parser")
-            links = []
             for a in soup.find_all("a", href=True):
-                href = urljoin(root, a["href"])
+                href = urljoin(root, a["href"].split("#", 1)[0])
                 if host_of(href) != host_of(root):
                     continue
                 label = clean(a.get_text(" ", strip=True)).lower()
                 value = (href + " " + label).lower()
                 if any(word in value for word in CONTACT_WORDS):
-                    links.append(href)
-            for href in links:
-                if href not in seen:
-                    urls.append(href); seen.add(href)
+                    if href not in seen:
+                        urls.append(href); seen.add(href)
+
+            # Public sitemaps often expose contact, careers, HR and imprint
+            # pages that are not linked from the homepage.
+            for sitemap_url in (urljoin(root, "sitemap.xml"), urljoin(root, "sitemap_index.xml")):
+                try:
+                    sr = requests.get(sitemap_url, headers={"User-Agent": random.choice(USER_AGENTS)}, timeout=DEEP_SEARCH_TIMEOUT)
+                    if not sr.ok:
+                        continue
+                    sitemap = BeautifulSoup(sr.text, "xml")
+                    for loc in sitemap.find_all("loc"):
+                        href = clean(loc.get_text(" ", strip=True))
+                        value = href.lower()
+                        if host_of(href) == host_of(root) and any(word in value for word in CONTACT_WORDS):
+                            if href not in seen:
+                                urls.append(href); seen.add(href)
+                except requests.RequestException:
+                    continue
     except requests.RequestException:
         pass
+
     for path in paths:
         href = urljoin(root, path.lstrip("/"))
         if href not in seen:
             urls.append(href); seen.add(href)
-    return urls[:DEEP_SEARCH_MAX_SITE_PAGES]
+    return urls
 
 
 def crawl_verified_site(site):
-    for page_url in site_pages_to_check(site):
+    """Crawl relevant pages on the verified official site until an email is found."""
+    queue = list(site_pages_to_check(site))
+    seen = set(queue)
+    started = time.monotonic()
+
+    while queue:
+        # Keep each company's crawl bounded by time, not by an arbitrary page
+        # count. This lets the workflow inspect as many relevant pages as the
+        # site exposes without one broken site consuming the whole run.
+        if time.monotonic() - started >= 90:
+            return ""
+
+        page_url = queue.pop(0)
         try:
             r = requests.get(
                 page_url,
@@ -1030,6 +1064,18 @@ def crawl_verified_site(site):
             email = extract_email(soup) or first_email(r.text)
             if email:
                 return email
+
+            # Continue through every relevant same-domain contact/career link
+            # discovered on the pages we visit.
+            for a in soup.find_all("a", href=True):
+                href = urljoin(r.url, a["href"].split("#", 1)[0])
+                if host_of(href) != host_of(site):
+                    continue
+                label = clean(a.get_text(" ", strip=True)).lower()
+                value = (href + " " + label).lower()
+                if any(word in value for word in CONTACT_WORDS) and href not in seen:
+                    seen.add(href)
+                    queue.append(href)
         except requests.RequestException:
             pass
         time.sleep(random.uniform(*DEEP_SEARCH_DELAY))
