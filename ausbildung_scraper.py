@@ -356,6 +356,7 @@ MARKET_PROFILES = [
         "fachkraft für lagerlogistik", "fachkraft lagerlogistik", "lagerlogistik",
         "groß- und außenhandelsmanagement", "gross- und aussenhandelsmanagement",
         "großhandel", "grosshandel", "außenhandel", "aussenhandel",
+        "export", "import",
     )),
     # Demande réelle, mais marché généralement plus disputé ou moins documenté
     # comme "Besetzungsproblem" au niveau national.
