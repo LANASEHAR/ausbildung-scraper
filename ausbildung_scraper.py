@@ -330,36 +330,20 @@ def extract_offer_date(text):
                 pass
     return ""
 
-# PRIORITÉ = BESOIN DU MARCHÉ + ACCESSIBILITÉ POUR UN CANDIDAT INTERNATIONAL.
-# Ce n'est PAS un classement de "profil fit". Il n'existe pas de statistique
-# nationale fiable donnant la concurrence "Allemands vs étrangers" par Ausbildung.
-# On utilise donc des proxys vérifiables :
-#   1) métiers avec beaucoup de places encore non pourvues / forte demande,
-#   2) signaux internationaux dans l'annonce (international, anglais, export...),
-#   3) signaux explicites d'ouverture aux candidats étrangers.
-#
-# Sources utilisées pour calibrer les catégories :
-# - BA Ausbildungsmarkt 2025/2026 : nombreuses places non pourvues notamment
-#   Einzelhandel, Verkäufer, Büromanagement, Groß-/Außenhandel.
-# - BA Schleswig-Holstein 07/2026 : 685 Einzelhandel, 487 Verkäufer,
-#   144 Büromanagement, 130 Groß-/Außenhandelsmanagement non pourvues.
-# - BA Düsseldorf 2026 : 157 Einzelhandel, 86 Verkäufer, 50 Büromanagement,
-#   26 Groß-/Außenhandelsmanagement non pourvues.
-# Ces chiffres sont des indicateurs de tension du marché, pas une mesure de
-# concurrence par nationalité.
+# PRIORITÉ = BESOIN DU MARCHÉ UNIQUEMENT.
+# Les signaux "English / Englisch / international / étrangers / migration"
+# ne sont PAS des mots-clés de recherche et ne donnent AUCUN bonus de priorité.
+# Ils peuvent être présents dans une annonce, mais ne servent pas à filtrer,
+# classer ou limiter la collecte.
 
 MARKET_PROFILES = [
-    # Forte présence de places non pourvues dans les données BA régionales.
     ("P1", 70, (
         "kaufmann im einzelhandel", "kauffrau im einzelhandel", "einzelhandel",
         "verkäufer", "verkaufer", "verkäuferin", "verkauferin",
-        "fachkraft für lagerlogistik", "fachkraft lagerlogistik", "lagerlogistik",
         "groß- und außenhandelsmanagement", "gross- und aussenhandelsmanagement",
         "großhandel", "grosshandel", "außenhandel", "aussenhandel",
         "export", "import",
     )),
-    # Demande réelle, mais marché généralement plus disputé ou moins documenté
-    # comme "Besetzungsproblem" au niveau national.
     ("P2", 52, (
         "spedition", "logistikdienstleistung", "disposition",
         "büromanagement", "bürokaufmann", "bürokauffrau",
@@ -371,18 +355,7 @@ MARKET_PROFILES = [
     )),
 ]
 
-INTERNATIONAL_SIGNALS_STRONG = (
-    "migration", "migrationshintergrund", "ausländische bewerber",
-    "ausländischen bewerber", "internationale bewerber", "international applicants",
-    "visa", "visum", "welcome", "willkommen", "internationales team",
-    "internationale mitarbeiter", "internationale mitarbeiterinnen",
-)
 
-INTERNATIONAL_SIGNALS = (
-    "international", "englisch", "english", "mehrsprach", "export", "import",
-    "ausland", "global", "b2b", "internationale kunden", "internationale partner",
-    "englischkenntnisse", "fremdsprachen",
-)
 
 PHYSICAL_EXCLUSION_SIGNALS = (
     # Truck / driving jobs — not the target.
@@ -432,6 +405,12 @@ def is_physically_unsuitable(job):
     return False
 
 def market_priority(job):
+    """Classify by documented market-need category only.
+
+    International/English/foreigner signals are deliberately NOT used as
+    search filters or priority boosts. There is no reliable national statistic
+    measuring German-vs-foreign applicant competition by Ausbildung.
+    """
     text = (
         clean(job.get("intitule", "")) + " " +
         clean(job.get("role_cible", "")) + " " +
@@ -447,29 +426,17 @@ def market_priority(job):
             matched = hit
             break
 
-    strong = sum(1 for signal in INTERNATIONAL_SIGNALS_STRONG if signal in text)
-    international = sum(1 for signal in INTERNATIONAL_SIGNALS if signal in text)
-
-    # International context is a tie-breaker/boost. It does not claim that
-    # foreign applicants face less competition; it identifies listings where
-    # international communication or explicit openness is visible.
-    score = base + min(20, strong * 12) + min(10, international * 2)
-
-    if score >= 80:
+    # Market priority is independent of English/international/migration words.
+    # Keep a simple stable mapping: P1 > P2 > P3.
+    if base >= 70:
         priority = "P1"
-    elif score >= 55:
+    elif base >= 52:
         priority = "P2"
     else:
         priority = "P3"
 
-    if strong:
-        signal = "besoin marché + signal explicite international"
-    elif international >= 2:
-        signal = "besoin marché + environnement international"
-    else:
-        signal = "besoin marché documenté; vérifier ouverture internationale"
-
-    return priority, score, signal, matched
+    signal = "besoin marché documenté"
+    return priority, base, signal, matched
 
 
 def priority_role_label(job):
