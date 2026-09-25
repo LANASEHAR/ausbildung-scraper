@@ -26,7 +26,7 @@ const CONFIG = {
   // Identité complète pour les emails
   NOM:         "Halima Essaouaf",
   EMAIL:       "essaouafhalima@gmail.com",
-  TEL:         "+212 6 XX XX XX XX",     // À remplacer par le numéro réel avant activation
+  TEL:         "+212619968131",
   LINKEDIN:    "linkedin.com/in/halima-essaouaf",  // ← À compléter
 
   // Nom de l'onglet dans le Google Sheet (fallback sur onglet actif)
@@ -34,7 +34,7 @@ const CONFIG = {
 
   // Maximum de candidatures réussies par exécution.
   // Le trigger est horaire : objectif = jusqu'à 30 emails valides / heure.
-  BATCH_LIMIT: 30,
+  BATCH_LIMIT: 30, // jusqu’à 30 tentatives par passage horaire
 
   // Pause entre deux envois pour éviter un burst trop agressif.
   DELAI_ENTRE_EMAILS_MS: 1000,
@@ -565,59 +565,60 @@ function getSignatureHTML() {
 function genererEmailCandidature(entreprise, intitule, roleCible) {
   const specialite = detecterSpecialite(intitule, roleCible);
   const titrePoste = getTitreAusbildung(specialite, intitule);
-  const entrepriseDisplay = (entreprise && entreprise !== "Unternehmen Deutschland") ? entreprise : null;
 
-  const salutation = entrepriseDisplay
-    ? `Sehr geehrte Damen und Herren des Unternehmens ${entrepriseDisplay},`
-    : "Sehr geehrte Damen und Herren,";
+  const entrepriseDisplay = (entreprise && entreprise !== "Unternehmen Deutschland")
+    ? entreprise
+    : "Ihr Unternehmen";
 
-  // Corps de motivation adapté par spécialité
+  // Une formulation spécifique au métier, puis une présentation courte
+  // qui donne au recruteur une vraie raison de vouloir en savoir davantage.
   const motivationParSpecialite = {
     "buero": `
-mit großem Interesse und Begeisterung bewerbe ich mich um einen Ausbildungsplatz als <strong>${titrePoste}</strong> in Ihrem Unternehmen.
+mit großem Interesse bewerbe ich mich um einen Ausbildungsplatz als <strong>${titrePoste}</strong> in ${entrepriseDisplay}.
 
-Ich bin eine organisierte, engagierte und kommunikationsstarke Persönlichkeit, die Freude daran hat, Abläufe zu optimieren, Aufgaben strukturiert zu erledigen und ein verlässlicher Teil eines Teams zu sein. Die Ausbildung zum Kaufmann/-frau für Büromanagement entspricht genau meinen Stärken und Interessen: der Umgang mit Kunden, das Koordinieren von Aufgaben und die Arbeit in einem modernen Büroumfeld.`,
+Was mich an diesem Beruf besonders anspricht, ist die Verbindung aus Organisation, Kommunikation und Verantwortung. Ich arbeite gerne dort, wo viele Aufgaben zusammenkommen, Prioritäten gesetzt werden müssen und gute Kommunikation den Unterschied macht.`,
 
     "ecommerce": `
-mit großem Interesse bewerbe ich mich um einen Ausbildungsplatz als <strong>${titrePoste}</strong> in Ihrem Unternehmen.
+mit großem Interesse bewerbe ich mich um einen Ausbildungsplatz als <strong>${titrePoste}</strong> in ${entrepriseDisplay}.
 
-Der digitale Handel fasziniert mich sehr: von der Produktpräsentation über den Onlineshop bis hin zur Kundenkommunikation. Ich bin technikaffin, lernbereit und bringe bereits erste Kenntnisse im Online-Marketing und in der Arbeit mit digitalen Tools mit. Ich möchte mein Wissen in Ihrem Unternehmen vertiefen und aktiv zu Ihrem Wachstum im E-Commerce beitragen.`,
+Besonders spannend finde ich die Verbindung von Kunden, digitalen Prozessen und Handel. Durch meine bisherige Arbeit mit E-Commerce, Kundenkommunikation und digitalen Tools habe ich bereits erlebt, wie abwechslungsreich dieser Bereich ist – und möchte dieses Wissen nun fachlich vertiefen.`,
 
     "handel": `
-mit großem Interesse bewerbe ich mich um einen Ausbildungsplatz als <strong>${titrePoste}</strong> in Ihrem Unternehmen.
+mit großem Interesse bewerbe ich mich um einen Ausbildungsplatz als <strong>${titrePoste}</strong> in ${entrepriseDisplay}.
 
-Die Welt des nationalen und internationalen Handels fasziniert mich sehr – insbesondere die Arbeit mit Lieferanten, die Koordination von Warenflüssen und die Kommunikation auf internationaler Ebene. Ich bin kommunikativ, zahlenaffin und spreche mehrere Sprachen, was mir im Groß- und Außenhandel einen echten Vorteil verschafft.`,
+Der internationale Handel interessiert mich besonders, weil er Kommunikation, Organisation und wirtschaftliches Denken miteinander verbindet. Die Zusammenarbeit mit Kunden und Geschäftspartnern in unterschiedlichen Märkten entspricht sehr gut meiner bisherigen internationalen Berufserfahrung.`,
 
     "spedition": `
-mit großem Interesse bewerbe ich mich um einen Ausbildungsplatz als <strong>${titrePoste}</strong> in Ihrem Unternehmen.
+mit großem Interesse bewerbe ich mich um einen Ausbildungsplatz als <strong>${titrePoste}</strong> in ${entrepriseDisplay}.
 
-Logistik und die Organisation von Transporten begeistern mich: Güter effizient von A nach B zu bringen, Lieferketten zu koordinieren und mit nationalen wie internationalen Partnern zusammenzuarbeiten – das ist genau das Berufsfeld, in dem ich mich langfristig entwickeln möchte. Ich bin belastbar, strukturiert und teamorientiert.`,
+An der Spedition und Logistik gefällt mir besonders, dass hinter jedem Auftrag ein konkreter Ablauf steht, der zuverlässig organisiert werden muss. Die Kombination aus Kundenkontakt, Koordination und internationalen Prozessen passt sehr gut zu meiner bisherigen Berufserfahrung.`,
 
     "tourismus": `
-mit großem Interesse bewerbe ich mich um einen Ausbildungsplatz als <strong>${titrePoste}</strong> in Ihrem Unternehmen.
+mit großem Interesse bewerbe ich mich um einen Ausbildungsplatz als <strong>${titrePoste}</strong> in ${entrepriseDisplay}.
 
-Die Tourismusbranche begeistert mich durch ihre Vielseitigkeit und den täglichen Kontakt mit Menschen aus aller Welt. Ich bin serviceorientiert, kommunikativ, spreche mehrere Sprachen und bringe echte Freude daran mit, unvergessliche Reiseerlebnisse für Kunden zu gestalten.`,
+Die Verbindung aus Service, Kommunikation und internationalem Umfeld spricht mich besonders an. Durch meine Erfahrung im Kundenkontakt und meine Sprachkenntnisse bringe ich bereits eine gute Grundlage mit und möchte mich in diesem Beruf gezielt weiterentwickeln.`,
   };
 
   const motivation = motivationParSpecialite[specialite] || motivationParSpecialite["buero"];
 
   const body = `
-${salutation}
+Sehr geehrte Damen und Herren,
+
 ${motivation}
 
-Ich bringe über fünf Jahre praktische Berufserfahrung in internationalen und kundenorientierten Arbeitsumgebungen mit. Dabei habe ich unter anderem in den Bereichen Customer Service, B2B-Kommunikation, E-Commerce, CRM, Auftragsbearbeitung und digitale Arbeitsprozesse gearbeitet.
+Ich bringe <strong>mehr als fünf Jahre praktische Berufserfahrung</strong> in internationalen und kundenorientierten Arbeitsumgebungen mit. Dabei habe ich unter anderem in Customer Service, B2B-Kommunikation, E-Commerce, CRM, Auftragsbearbeitung und digitalen Arbeitsprozessen gearbeitet.
 
-Der tägliche Kontakt mit Kunden und Geschäftspartnern hat mir gezeigt, wie wichtig Zuverlässigkeit, Organisation, Kommunikation und eigenständiges Arbeiten sind. Diese Erfahrung möchte ich gerne in Ihr Unternehmen einbringen und gleichzeitig neue fachliche Kenntnisse erwerben.
+Diese Erfahrung hat mir vor allem eines gezeigt: Ich lerne schnell, übernehme Verantwortung und arbeite am liebsten dort, wo ich mit Menschen, Informationen und konkreten Aufgaben etwas bewegen kann.
 
-Warum möchte ich trotz meiner bisherigen Berufserfahrung eine Ausbildung in Deutschland beginnen? Weil ich meine praktischen Kenntnisse gezielt mit einer anerkannten beruflichen Qualifikation verbinden möchte. Ich möchte nicht nur theoretisch lernen, sondern das Gelernte direkt im Arbeitsalltag anwenden und mich langfristig in einem deutschen Unternehmen entwickeln.
+Vielleicht fragen Sie sich, warum ich trotz meiner bisherigen Berufserfahrung eine Ausbildung in Deutschland beginnen möchte. Genau darin liegt für mich der nächste Schritt: Ich möchte meine praktische Erfahrung mit einer <strong>anerkannten beruflichen Qualifikation in Deutschland</strong> verbinden, die fachlichen Grundlagen systematisch lernen und das Gelernte unmittelbar im Arbeitsalltag anwenden.
 
-Darüber hinaus verfüge ich über einen DEUG-Hochschulabschluss. Ich lerne Deutsch mit dem konkreten Ziel, beruflich in Deutschland Fuß zu fassen, und arbeite kontinuierlich daran, meine Sprachkenntnisse weiter zu verbessern. Neue Aufgaben lerne ich schnell, arbeite strukturiert und übernehme gerne Verantwortung.
+Darüber hinaus verfüge ich über einen <strong>DEUG-Hochschulabschluss</strong>. Mein Ziel ist es, meine bisherigen Erfahrungen nicht einfach fortzusetzen, sondern sie mit einer fundierten Ausbildung zu verbinden und mich langfristig in einem deutschen Unternehmen weiterzuentwickeln.
 
-Besonders an Ihrer Ausbildung interessiert mich die Möglichkeit, meine bisherige praktische Erfahrung einzubringen und gleichzeitig die fachlichen Grundlagen dieses Berufs systematisch zu erlernen. Genau diese Verbindung aus Erfahrung, Lernen und praktischer Anwendung suche ich für meinen nächsten beruflichen Schritt.
+Ich lerne Deutsch mit diesem konkreten beruflichen Ziel und verbessere meine Sprachkenntnisse kontinuierlich. Was ich noch nicht kann, lerne ich schnell – und was ich bereits kann, bringe ich gerne ein.
+
+<strong>Ich würde mich freuen, wenn wir uns persönlich kennenlernen.</strong> In einem kurzen Gespräch erzähle ich Ihnen gerne mehr über meinen bisherigen Weg, meine Motivation und darüber, warum ich mich gerade für eine Ausbildung in Ihrem Unternehmen interessiere.
 
 Meine Bewerbungsunterlagen finden Sie im Anhang.
-
-Über eine Einladung zu einem persönlichen Gespräch oder einem kurzen Online-Interview würde ich mich sehr freuen. Gerne erzähle ich Ihnen mehr über meine Motivation und meine bisherigen Erfahrungen.
 
 Vielen Dank für Ihre Zeit und die Prüfung meiner Bewerbung.
 
@@ -636,9 +637,7 @@ function genererEmailRelance(entreprise, intitule, roleCible) {
   const titrePoste = getTitreAusbildung(specialite);
   const entrepriseDisplay = (entreprise && entreprise !== "Unternehmen Deutschland") ? entreprise : null;
 
-  const salutation = entrepriseDisplay
-    ? `Sehr geehrte Damen und Herren des Unternehmens ${entrepriseDisplay},`
-    : "Sehr geehrte Damen und Herren,";
+  const salutation = "Sehr geehrte Damen und Herren,";
 
   const body = `
 ${salutation}
@@ -682,15 +681,10 @@ function traiterAusbildungCandidatures() {
       return;
     }
 
-    // Quota réel restant. Google impose des quotas quotidiens variables
-    // selon le type de compte : on ne tente jamais de dépasser le quota.
-    const quotaRestant = MailApp.getRemainingDailyQuota();
-    if (quotaRestant <= 0) {
-      Logger.log("🛑 Plus aucun quota email aujourd'hui.");
-      return;
-    }
-
-    const limite = Math.min(CONFIG.BATCH_LIMIT, quotaRestant);
+    // Le workflow tente jusqu'à CONFIG.BATCH_LIMIT messages par passage.
+    // Si Google impose une limite d'envoi, GmailApp.sendEmail() échoue pour le
+    // message concerné et l'erreur est journalisée sans bloquer les autres lignes.
+    const limite = CONFIG.BATCH_LIMIT;
     let compteur = 0;
 
     // Historique PERSISTANT : protège contre un second envoi au même email
@@ -838,7 +832,7 @@ function traiterAusbildungCandidatures() {
       }
     }
 
-    Logger.log("FIN — " + compteur + " email(s) envoyé(s), limite de cette heure: " + limite);
+    Logger.log("FIN — " + compteur + " email(s) envoyé(s) / tentatives autorisées: " + limite);
 
   } catch (error) {
     Logger.log("[TRAITEMENT] Erreur: " + error.toString());
