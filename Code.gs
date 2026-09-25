@@ -181,6 +181,38 @@ function doGet() {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+function ensureTrackingColumns(sheet) {
+  const headers = [
+    "Date offre", "Priorité région", "Priorité Ausbildung"
+  ];
+
+  // Add metadata headers only when they are not already present.
+  const lastColumn = Math.max(sheet.getLastColumn(), COL.DATE_RELANCE + 1);
+  if (sheet.getMaxColumns() < COL.PRIORITE_AUSBILDUNG + 1) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), COL.PRIORITE_AUSBILDUNG + 1 - sheet.getMaxColumns());
+  }
+
+  const headerValues = sheet.getRange(1, 1, 1, COL.PRIORITE_AUSBILDUNG + 1).getValues()[0];
+  if (!headerValues[COL.DATE_OFFRE]) headerValues[COL.DATE_OFFRE] = headers[0];
+  if (!headerValues[COL.PRIORITE_REGION]) headerValues[COL.PRIORITE_REGION] = headers[1];
+  if (!headerValues[COL.PRIORITE_AUSBILDUNG]) headerValues[COL.PRIORITE_AUSBILDUNG] = headers[2];
+
+  sheet.getRange(1, 1, 1, COL.PRIORITE_AUSBILDUNG + 1).setValues([headerValues]);
+}
+
+function sortOffers(sheet) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 2) return;
+
+  // Region priority → Ausbildung priority → newest offer date → detection date.
+  sheet.getRange(2, 1, lastRow - 1, COL.PRIORITE_AUSBILDUNG + 1).sort([
+    {column: COL.PRIORITE_REGION + 1, ascending: false},
+    {column: COL.PRIORITE_AUSBILDUNG + 1, ascending: false},
+    {column: COL.DATE_OFFRE + 1, ascending: false},
+    {column: COL.DATE_DETECTION + 1, ascending: false}
+  ]);
+}
+
 function doPost(e) {
   // Parse the request BEFORE taking the script lock. JSON parsing does not touch
   // the spreadsheet and therefore should never block other webhook executions.
@@ -204,6 +236,7 @@ function doPost(e) {
     lock.waitLock(25000);
 
     const sheet = getSheet();
+    ensureTrackingColumns(sheet);
     const allData = sheet.getDataRange().getValues();
     const { existingIds, existingEmails } = buildSheetIndexes(allData);
 
@@ -352,6 +385,9 @@ function doPost(e) {
         jobId,
         "",
         "",
+        job.date_offre || "",
+        Number(job.prioritaet_region || 0),
+        Number(job.prioritaet_ausbildung || 0),
       ]);
 
       existingIds.add(jobId);
@@ -363,6 +399,7 @@ function doPost(e) {
       const firstRow = sheet.getLastRow() + 1;
       sheet.getRange(firstRow, 1, rowsToAppend.length, rowsToAppend[0].length)
         .setValues(rowsToAppend);
+      sortOffers(sheet);
     }
 
     Logger.log("[INSERT] " + rowsToAppend.length + " ajoutées | IDs doublons ignorés: " + duplicateIds +
@@ -568,8 +605,16 @@ function traiterAusbildungCandidatures() {
     // Le workflow tente jusqu'à CONFIG.BATCH_LIMIT messages par passage.
     // Les limites réelles du compte Google restent appliquées côté Gmail/Apps Script.
     // Une erreur d'envoi est journalisée sans bloquer les autres lignes.
-    const limite = CONFIG.BATCH_LIMIT;
+    const quotaRestant = MailApp.getRemainingDailyQuota();
+    const limite = Math.min(CONFIG.BATCH_LIMIT, Math.max(0, quotaRestant));
     let compteur = 0;
+
+    Logger.log("Quota email restant aujourd'hui: " + quotaRestant + " | limite de cette exécution: " + limite);
+
+    if (limite <= 0) {
+      Logger.log("⏭️ Aucun quota email disponible pour cette exécution.");
+      return;
+    }
 
     // Historique PERSISTANT : protège contre un second envoi au même email
     // même si la ligne change de statut ou si un nouveau job apparaît.
