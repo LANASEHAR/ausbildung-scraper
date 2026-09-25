@@ -20,7 +20,7 @@ SEARCH_RETRY_DELAY = (1.0, 2.5)
 # Every run reads rows already in Sheets that have no usable email,
 # deduplicates them by company, searches the official company site,
 # and writes verified public emails back to all matching rows.
-MAX_COMPANIES_PER_RUN = 1000
+MAX_COMPANIES_PER_RUN = None
 
 
 def webhook_url():
@@ -197,8 +197,8 @@ def main():
             }
         groups[key]["rows"].append(row)
 
-    groups = list(groups.values())[:MAX_COMPANIES_PER_RUN]
-    print(f"[*] {len(groups)} entreprises UNIQUES à enrichir.")
+    groups = list(groups.values())
+    print(f"[*] {len(groups)} entreprises UNIQUES à enrichir (aucun doublon par offre).")
 
     updates = []
     sites_found = 0
