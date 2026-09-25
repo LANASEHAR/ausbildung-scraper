@@ -34,7 +34,7 @@ jobs:
           pip install requests beautifulsoup4 lxml
 
       - name: Validate Python syntax
-        run: python -m py_compile ausbildung_scraper.py daily_runner.py
+        run: python -m py_compile ausbildung_scraper.py daily_runner.py daily_runner.py
 
       - name: Run daily mass scraper
         env:
