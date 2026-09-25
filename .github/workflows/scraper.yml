@@ -35,8 +35,21 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests beautifulsoup4 lxml
 
-      - name: Validate Python syntax
-        run: python -m py_compile ausbildung_scraper.py daily_runner.py
+      - name: Validate Python syntax and imports
+        env:
+          GOOGLE_SHEET_WEBHOOK_URL: ${{ secrets.GOOGLE_SHEET_WEBHOOK_URL }}
+        run: |
+          python -m py_compile ausbildung_scraper.py daily_runner.py
+          python - <<'PY'
+          import os
+          import ausbildung_scraper as scraper
+          import daily_runner
+          assert hasattr(scraper, "iter_collected_links")
+          assert hasattr(scraper, "scrape_details")
+          assert hasattr(daily_runner, "process_batch")
+          assert os.environ.get("GOOGLE_SHEET_WEBHOOK_URL"), "GOOGLE_SHEET_WEBHOOK_URL is missing"
+          print("Preflight OK")
+          PY
 
       - name: Run twice-daily time-budget scraper
         env:
