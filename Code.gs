@@ -235,11 +235,16 @@ function doPost(e) {
       const offset = Math.max(0, Number(rawData.offset || 0));
       const limit = Math.min(500, Math.max(1, Number(rawData.limit || 500)));
       const rows = [];
+      let skipped = 0;
 
       for (let i = 1; i < allData.length && rows.length < limit; i++) {
         const row = allData[i];
         const email = extractFirstEmail(row[COL.EMAILS_RH] || "");
         if (email) continue;
+        if (skipped < offset) {
+          skipped++;
+          continue;
+        }
 
         rows.push({
           id: String(row[COL.ID] || "").trim(),
