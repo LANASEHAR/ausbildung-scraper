@@ -8,7 +8,6 @@ DETAIL_WORKERS = scraper.DETAIL_WORKERS
 
 def scrape_and_upload_in_batches(links):
     jobs = []
-    batch = []
 
     with ThreadPoolExecutor(max_workers=DETAIL_WORKERS) as executor:
         futures = {executor.submit(scraper.parse_detail, link): link for link in links}
@@ -19,29 +18,27 @@ def scrape_and_upload_in_batches(links):
                 print(f"[!] détail erreur: {exc}")
                 continue
 
-            if not job:
-                continue
-
-            jobs.append(job)
-            batch.append(job)
-
-            if len(batch) >= BATCH_SIZE:
-                print(f"[*] BATCH {BATCH_SIZE}: envoi immédiat vers Google Sheets | total offres: {len(jobs)}")
-                scraper.send_to_sheet(batch)
-                print(f"[OK] BATCH envoyé: {len(batch)} offres")
-                batch = []
+            if job:
+                jobs.append(job)
 
             if n % 50 == 0:
                 email_count = sum(1 for x in jobs if x.get("emails_rh"))
                 print(f"[*] détails traités: {n}/{len(links)} | offres: {len(jobs)} | avec email BA: {email_count}")
 
-    if batch:
-        print(f"[*] DERNIER BATCH: envoi immédiat de {len(batch)} offres vers Google Sheets")
-        scraper.send_to_sheet(batch)
-        print(f"[OK] DERNIER BATCH envoyé: {len(batch)} offres")
-
     jobs = list({job["id"]: job for job in jobs}.values())
-    print(f"[OK] Toutes les offres sont maintenant dans Google Sheets: {len(jobs)} offres")
+    jobs = scraper.prioritize_jobs(jobs)
+
+    if not jobs:
+        raise RuntimeError("Aucune offre Kaufmann ciblée après filtrage.")
+
+    # Send already-sorted batches, preserving newest -> oldest order in Sheets.
+    for start in range(0, len(jobs), BATCH_SIZE):
+        batch = jobs[start:start + BATCH_SIZE]
+        print(f"[*] BATCH {start // BATCH_SIZE + 1}: envoi de {len(batch)} offres vers Google Sheets")
+        scraper.send_to_sheet(batch)
+        print(f"[OK] BATCH envoyé: {len(batch)} offres")
+
+    print(f"[OK] Offres ciblées dans Google Sheets: {len(jobs)}")
     return jobs
 
 
