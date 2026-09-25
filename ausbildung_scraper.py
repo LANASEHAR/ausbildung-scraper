@@ -330,83 +330,128 @@ def extract_offer_date(text):
                 pass
     return ""
 
-PROFILE_KEYWORDS = {
-    "groß": 10, "gross": 10, "außenhandel": 12, "aussenhandel": 12,
-    "export": 11, "import": 8, "international": 7, "b2b": 8,
-    "kunden": 5, "customer": 5, "vertrieb": 6, "sales": 5,
-    "einkauf": 6, "beschaffung": 6, "lieferanten": 5,
-    "logistik": 5, "disposition": 6, "spedition": 5,
-    "auftrags": 4, "crm": 3, "mehrsprach": 6, "kaufmänn": 6,
-    "kaufmann": 6, "kauffrau": 6, "shopify": 7, "e-commerce": 8,
-}
+# PRIORITÉ = BESOIN DU MARCHÉ + ACCESSIBILITÉ POUR UN CANDIDAT INTERNATIONAL.
+# Ce n'est PAS un classement de "profil fit". Il n'existe pas de statistique
+# nationale fiable donnant la concurrence "Allemands vs étrangers" par Ausbildung.
+# On utilise donc des proxys vérifiables :
+#   1) métiers avec beaucoup de places encore non pourvues / forte demande,
+#   2) signaux internationaux dans l'annonce (international, anglais, export...),
+#   3) signaux explicites d'ouverture aux candidats étrangers.
+#
+# Sources utilisées pour calibrer les catégories :
+# - BA Ausbildungsmarkt 2025/2026 : nombreuses places non pourvues notamment
+#   Einzelhandel, Verkäufer, Büromanagement, Groß-/Außenhandel.
+# - BA Schleswig-Holstein 07/2026 : 685 Einzelhandel, 487 Verkäufer,
+#   144 Büromanagement, 130 Groß-/Außenhandelsmanagement non pourvues.
+# - BA Düsseldorf 2026 : 157 Einzelhandel, 86 Verkäufer, 50 Büromanagement,
+#   26 Groß-/Außenhandelsmanagement non pourvues.
+# Ces chiffres sont des indicateurs de tension du marché, pas une mesure de
+# concurrence par nationalité.
 
-# Strategie für DEIN Profil: praktische Passung + aktueller Ausbildungsmarkt +
-# Signale für internationale Arbeitsumgebungen. "International fit" ist nur
-# ein Proxy; es gibt keine belastbare bundesweite Statistik, die die Konkurrenz
-# speziell für Bewerberinnen aus Marokko nach Ausbildungsberuf misst.
-PRIORITY_PROFILES = [
-    ("P1", 95, ("groß- und außenhandelsmanagement", "großhandel", "außenhandel", "aussenhandel", "export", "import")),
-    ("P1", 94, ("spedition", "logistikdienstleistung", "disposition")),
-    ("P1", 88, ("industriekaufmann", "industriekauffrau")),
-    ("P2", 84, ("e-commerce", "ecommerce")),
-    ("P2", 82, ("büromanagement", "bürokaufmann", "bürokauffrau")),
-    ("P2", 80, ("tourismus", "tourismus und freizeit", "reiseverkehr")),
-    ("P2", 78, ("einzelhandel",)),
-    ("P3", 74, ("verkäufer", "verkaufer")),
+MARKET_PROFILES = [
+    # Forte présence de places non pourvues dans les données BA régionales.
+    ("P1", 70, (
+        "kaufmann im einzelhandel", "kauffrau im einzelhandel", "einzelhandel",
+        "verkäufer", "verkaufer", "verkäuferin", "verkauferin",
+        "fachkraft für lagerlogistik", "fachkraft lagerlogistik", "lagerlogistik",
+        "groß- und außenhandelsmanagement", "gross- und aussenhandelsmanagement",
+        "großhandel", "grosshandel", "außenhandel", "aussenhandel",
+    )),
+    # Demande réelle, mais marché généralement plus disputé ou moins documenté
+    # comme "Besetzungsproblem" au niveau national.
+    ("P2", 52, (
+        "spedition", "logistikdienstleistung", "disposition",
+        "büromanagement", "bürokaufmann", "bürokauffrau",
+        "industriekaufmann", "industriekauffrau",
+    )),
+    ("P3", 35, (
+        "e-commerce", "ecommerce", "tourismus", "tourismus und freizeit",
+        "reiseverkehr",
+    )),
 ]
+
+INTERNATIONAL_SIGNALS_STRONG = (
+    "migration", "migrationshintergrund", "ausländische bewerber",
+    "ausländischen bewerber", "internationale bewerber", "international applicants",
+    "visa", "visum", "welcome", "willkommen", "internationales team",
+    "internationale mitarbeiter", "internationale mitarbeiterinnen",
+)
 
 INTERNATIONAL_SIGNALS = (
     "international", "englisch", "english", "mehrsprach", "export", "import",
     "ausland", "global", "b2b", "internationale kunden", "internationale partner",
-    "internationales team", "englischkenntnisse", "fremdsprachen",
+    "englischkenntnisse", "fremdsprachen",
 )
 
-def profile_relevance(job):
-    text = (
-        clean(job.get("intitule", "")) + " " +
-        clean(job.get("role_cible", "")) + " " +
-        clean(job.get("description", ""))
-    ).lower()
-    return sum(weight for keyword, weight in PROFILE_KEYWORDS.items() if keyword in text)
-
-def priority_for_job(job):
+def market_priority(job):
     text = (
         clean(job.get("intitule", "")) + " " +
         clean(job.get("role_cible", "")) + " " +
         clean(job.get("description", ""))
     ).lower()
 
-    category = "P3"
-    base = 65
-    matched_terms = ()
-
-    for candidate, candidate_base, terms in PRIORITY_PROFILES:
-        if any(term in text for term in terms):
-            category = candidate
-            base = candidate_base
-            matched_terms = terms
+    base = 30
+    matched = "Autre / vérifier"
+    for category, category_base, terms in MARKET_PROFILES:
+        hit = next((term for term in terms if term in text), None)
+        if hit:
+            base = category_base
+            matched = hit
             break
 
-    fit = min(15, round(profile_relevance(job) / 3))
-    international = min(10, sum(1 for signal in INTERNATIONAL_SIGNALS if signal in text))
-    score = min(100, base + fit + international)
+    strong = sum(1 for signal in INTERNATIONAL_SIGNALS_STRONG if signal in text)
+    international = sum(1 for signal in INTERNATIONAL_SIGNALS if signal in text)
 
-    market_signal = {
-        "P1": "hohe Nachfrage / viele offene Stellen + starke Profilpassung",
-        "P2": "gute Nachfrage + starke Profilpassung",
-        "P3": "Backup: viele Stellen, aber strategisch weniger passend",
-    }[category]
+    # International context is a tie-breaker/boost. It does not claim that
+    # foreign applicants face less competition; it identifies listings where
+    # international communication or explicit openness is visible.
+    score = base + min(20, strong * 12) + min(10, international * 2)
 
-    # Explicit signals make individual listings more useful for an international
-    # applicant, without pretending that we know their actual competition level.
-    if international >= 2:
-        market_signal += " + internationales Umfeld"
+    if score >= 80:
+        priority = "P1"
+    elif score >= 55:
+        priority = "P2"
+    else:
+        priority = "P3"
 
-    return category, score, market_signal, matched_terms
+    if strong:
+        signal = "besoin marché + signal explicite international"
+    elif international >= 2:
+        signal = "besoin marché + environnement international"
+    else:
+        signal = "besoin marché documenté; vérifier ouverture internationale"
+
+    return priority, score, signal, matched
+
+
+def priority_role_label(job):
+    priority, _, _, _ = market_priority(job)
+    role = clean(job.get("role_cible", "")) or "Ausbildung"
+    role = re.sub(r"^\s*P[123]\s*[|—:-]\s*", "", role, flags=re.I)
+    return f"{priority} | {role}"
+
+
+def job_priority_from_role(role):
+    m = re.match(r"^\s*(P[123])\s*[|—:-]", clean(role), re.I)
+    if m:
+        return m.group(1).upper()
+
+    text = clean(role).lower()
+    if any(x in text for x in (
+        "einzelhandel", "verkäufer", "verkaufer", "lagerlogistik",
+        "großhandel", "grosshandel", "außenhandel", "aussenhandel",
+    )):
+        return "P1"
+    if any(x in text for x in (
+        "spedition", "logistikdienstleistung", "disposition",
+        "büromanagement", "industriekaufmann", "industriekauffrau",
+    )):
+        return "P2"
+    return "P3"
+
 
 def job_sort_key(job):
-    # Priority first. Inside each priority: newest publication first.
-    priority = job.get("priorite", "P3")
+    priority = job.get("priorite") or job_priority_from_role(job.get("role_cible", ""))
     priority_order = {"P1": 3, "P2": 2, "P3": 1}
     raw = clean(job.get("date_offre"))
     match = re.search(r"(\d{4}-\d{2}-\d{2})", raw)
@@ -414,18 +459,20 @@ def job_sort_key(job):
     return (
         priority_order.get(priority, 0),
         date_key,
-        int(job.get("score_profil", 0) or 0),
+        int(job.get("score_priorite", 0) or 0),
         job.get("date_detection") or "",
         job.get("id") or "",
     )
 
+
 def prioritize_jobs(jobs):
-    """Filter target roles, classify P1/P2/P3, then newest-first inside each priority."""
+    """Filter target roles and classify by market need/international accessibility."""
     target_terms = (
         "groß- und außenhandelsmanagement", "großhandel", "außenhandel", "aussenhandel",
         "export", "import", "spedition", "logistikdienstleistung", "disposition",
         "büromanagement", "e-commerce", "ecommerce", "einzelhandel", "verkäufer",
-        "verkaufer", "industriekaufmann", "industriekauffrau", "tourismus", "reiseverkehr"
+        "verkaufer", "industriekaufmann", "industriekauffrau", "tourismus", "reiseverkehr",
+        "lagerlogistik",
     )
     filtered = []
     for job in jobs:
@@ -435,10 +482,11 @@ def prioritize_jobs(jobs):
             clean(job.get("description", ""))
         ).lower()
         if any(term in text for term in target_terms):
-            priority, score, signal, _ = priority_for_job(job)
+            priority, score, signal, _ = market_priority(job)
             job["priorite"] = priority
-            job["score_profil"] = score
+            job["score_priorite"] = score
             job["signal_marche"] = signal
+            job["role_cible"] = priority_role_label(job)
             filtered.append(job)
 
     filtered.sort(key=job_sort_key, reverse=True)
