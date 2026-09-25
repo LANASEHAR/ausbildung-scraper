@@ -227,6 +227,44 @@ function doPost(e) {
     const allData = sheet.getDataRange().getValues();
     const { existingIds, existingEmails } = buildSheetIndexes(allData);
 
+    // ── MODE EXPORT_MISSING_EMAILS : lecture des lignes sans email ─────────
+    // Utilisé par le workflow GitHub d'enrichissement. La lecture est paginée
+    // pour éviter une réponse énorme et pour laisser le workflow reprendre
+    // proprement sur plusieurs appels.
+    if (rawData && rawData.action === "export_missing_emails") {
+      const offset = Math.max(0, Number(rawData.offset || 0));
+      const limit = Math.min(500, Math.max(1, Number(rawData.limit || 500)));
+      const rows = [];
+
+      for (let i = 1; i < allData.length && rows.length < limit; i++) {
+        const row = allData[i];
+        const email = extractFirstEmail(row[COL.EMAILS_RH] || "");
+        if (email) continue;
+
+        rows.push({
+          id: String(row[COL.ID] || "").trim(),
+          entreprise: String(row[COL.ENTREPRISE] || "").trim(),
+          intitule: String(row[COL.INTITULE] || "").trim(),
+          role_cible: String(row[COL.ROLE_CIBLE] || "").trim(),
+          lieu: String(row[COL.LIEU] || "").trim(),
+          source: String(row[COL.SOURCE] || "").trim(),
+          lien: String(row[COL.LIEN] || "").trim(),
+          row_number: i + 1
+        });
+      }
+
+      return ContentService
+        .createTextOutput(JSON.stringify({
+          status: "success",
+          action: "export_missing_emails",
+          offset: offset,
+          returned: rows.length,
+          total_rows: Math.max(0, allData.length - 1),
+          rows: rows
+        }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
     // ── MODE UPDATE : enrichissement email/site depuis le scraper ─────────
     if (rawData && rawData.action === "update") {
       const jobs = Array.isArray(rawData.jobs) ? rawData.jobs : [];
