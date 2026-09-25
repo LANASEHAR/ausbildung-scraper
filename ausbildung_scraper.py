@@ -199,61 +199,69 @@ def api_headers():
 
 def api_search_page(session, query, page):
     """
-    Search Ausbildung/Duales Studium through the Jobsuche REST API.
-    This avoids the HTML Jobsuche frontend 403 that starts appearing
-    around page 25+ during high-volume scraping.
+    Search Ausbildung through BA's public Jobsuche API.
+    Retry without the broad 'wo=Deutschland' filter when it yields no data,
+    then fall back to the app endpoint.
     """
-    params = {
-        "angebotsart": 4,       # Ausbildung / Duales Studium
-        "was": query,
-        "wo": "Deutschland",
-        "page": page,
-        "size": BA_API_SIZE,
-    }
+    endpoint_variants = [
+        (BA_API_SEARCH_URL, {"angebotsart": 4, "was": query, "page": page, "size": BA_API_SIZE}),
+        (BA_API_SEARCH_URL, {"angebotsart": 4, "was": query, "wo": "Deutschland", "page": page, "size": BA_API_SIZE}),
+        (BA_API_BASE + "/pc/v4/app/jobs", {"angebotsart": 4, "was": query, "page": page, "size": BA_API_SIZE}),
+    ]
 
     last_exc = None
-    for attempt in range(API_RETRIES):
-        try:
-            session.headers.update(api_headers())
-            r = session.get(BA_API_SEARCH_URL, params=params, timeout=DETAIL_TIMEOUT)
-            if r.status_code in (403, 429):
-                # API can rate-limit sporadically. Back off instead of
-                # hammering the endpoint and losing the whole query.
-                wait = API_BACKOFF[min(attempt, len(API_BACKOFF) - 1)]
-                print(f"[!] BA API {r.status_code} page {page} — retry {attempt + 1}/{API_RETRIES} dans {wait:.0f}s")
-                time.sleep(wait)
-                continue
-            r.raise_for_status()
-            payload = r.json()
-            offers = payload.get("stellenangebote") or []
-
-            links = []
-            for offer in offers:
-                refnr = clean(
-                    offer.get("refnr")
-                    or offer.get("referenznummer")
-                    or offer.get("referenzNr")
-                    or ""
-                )
-                if not refnr:
+    for endpoint, params in endpoint_variants:
+        for attempt in range(API_RETRIES):
+            try:
+                session.headers.update(api_headers())
+                r = session.get(endpoint, params=params, timeout=DETAIL_TIMEOUT)
+                if r.status_code in (403, 429):
+                    wait = API_BACKOFF[min(attempt, len(API_BACKOFF) - 1)]
+                    print(f"[!] BA API {r.status_code} {endpoint} page {page} — retry {attempt + 1}/{API_RETRIES} dans {wait:.0f}s")
+                    time.sleep(wait)
                     continue
-                published = clean(
-                    offer.get("aktuelleVeroeffentlichungsdatum")
-                    or offer.get("ersteVeroeffentlichungsdatum")
-                    or ""
-                )
-                token = json.dumps(
-                    {"refnr": refnr, "published": published},
-                    ensure_ascii=False,
-                    separators=(",", ":"),
-                )
-                links.append("aaapi://" + base64.urlsafe_b64encode(token.encode()).decode())
-            return links
-        except (requests.RequestException, ValueError) as exc:
-            last_exc = exc
-            if attempt < API_RETRIES - 1:
-                wait = API_BACKOFF[min(attempt, len(API_BACKOFF) - 1)]
-                time.sleep(wait)
+                r.raise_for_status()
+                payload = r.json()
+                offers = payload.get("stellenangebote") or payload.get("ergebnisliste") or payload.get("jobs") or []
+                if not isinstance(offers, list):
+                    offers = []
+
+                links = []
+                for offer in offers:
+                    if not isinstance(offer, dict):
+                        continue
+                    refnr = clean(
+                        offer.get("refnr")
+                        or offer.get("referenznummer")
+                        or offer.get("referenzNr")
+                        or ""
+                    )
+                    if not refnr:
+                        continue
+                    published = clean(
+                        offer.get("aktuelleVeroeffentlichungsdatum")
+                        or offer.get("ersteVeroeffentlichungsdatum")
+                        or offer.get("modifikationsTimestamp")
+                        or ""
+                    )
+                    token = json.dumps(
+                        {"refnr": refnr, "published": published},
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    )
+                    links.append("aaapi://" + base64.urlsafe_b64encode(token.encode()).decode())
+
+                if links:
+                    return links
+
+                print(f"[!] BA API returned 0 usable offers for '{query}' page {page} via {endpoint}")
+                break
+
+            except (requests.RequestException, ValueError) as exc:
+                last_exc = exc
+                if attempt < API_RETRIES - 1:
+                    wait = API_BACKOFF[min(attempt, len(API_BACKOFF) - 1)]
+                    time.sleep(wait)
 
     if last_exc:
         raise last_exc
@@ -290,8 +298,9 @@ def collect_links():
             time.sleep(random.uniform(*SEARCH_DELAY))
     if not links:
         raise RuntimeError(
-            "BA Jobsuche API n'a retourné aucune offre. "
-            "Le workflow doit échouer au lieu d'envoyer un Sheet vide."
+            "BA Jobsuche API n'a retourné aucune offre après les variantes "
+            "v6 sans wo, v6 avec wo=Deutschland et v4/app. "
+            "Aucune donnée ne sera envoyée au Sheet."
         )
     print(f"[*] {len(links)} liens uniques AUSBILDUNG collectés.")
     return links
@@ -320,24 +329,6 @@ def extract_offer_date(text):
             except ValueError:
                 pass
     return ""
-
-PROFILE_KEYWORDS = {
-    "groß": 10, "gross": 10, "außenhandel": 12, "aussenhandel": 12,
-    "export": 11, "import": 8, "international": 7, "b2b": 8,
-    "kunden": 5, "customer": 5, "vertrieb": 6, "sales": 5,
-    "einkauf": 6, "beschaffung": 6, "lieferanten": 5,
-    "logistik": 5, "disposition": 6, "spedition": 5,
-    "auftrags": 4, "crm": 3, "mehrsprach": 6, "kaufmänn": 6,
-    "kaufmann": 6, "kauffrau": 6,
-}
-
-def profile_relevance(job):
-    text = (
-        clean(job.get("intitule", "")) + " " +
-        clean(job.get("role_cible", "")) + " " +
-        clean(job.get("description", ""))
-    ).lower()
-    return sum(weight for keyword, weight in PROFILE_KEYWORDS.items() if keyword in text)
 
 PROFILE_KEYWORDS = {
     "groß": 10, "gross": 10, "außenhandel": 12, "aussenhandel": 12,
