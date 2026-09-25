@@ -64,13 +64,18 @@ const COL = {
   ROLE_CIBLE:     2,  // C
   INTITULE:       3,  // D
   ENTREPRISE:     4,  // E
-  LIEU:           5,  // F
+  LIEU:            5,  // F
   EMAILS_RH:      6,  // G
   SOURCE:         7,  // H
-  LIEN:           8,  // I
-  ID:             9,  // J
+  LIEN:            8,  // I
+  ID:              9,  // J
   DATE_ENVOI:    10,  // K
   DATE_RELANCE:  11,  // L
+  DATE_OFFRE:     12,  // M
+  PRIORITE:       13,  // N
+  SCORE_PROFIL:   14,  // O
+  SIGNAL_MARCHE:  15,  // P
+  SITE_ENTREPRISE:16,  // Q
 };
 
 
@@ -646,7 +651,7 @@ Darüber hinaus verfüge ich über einen <strong>DEUG-Hochschulabschluss</strong
 
 Ich lerne Deutsch derzeit gezielt auf B2-Niveau weiter, weil ich mich langfristig beruflich in Deutschland entwickeln möchte. Ich verbessere meine Sprachkenntnisse kontinuierlich und arbeite aktiv daran, im beruflichen Alltag sicher und präzise auf Deutsch zu kommunizieren. Was ich noch nicht kann, lerne ich schnell – und was ich bereits kann, bringe ich gerne ein.
 
-<strong>Ich würde mich freuen, wenn wir uns persönlich kennenlernen.</strong> In einem kurzen Gespräch erzähle ich Ihnen gerne mehr über meinen bisherigen Weg, meine Motivation und darüber, warum ich mich gerade für eine Ausbildung in Ihrem Unternehmen interessiere.
+<strong>Ich würde mich sehr über die Gelegenheit zu einem kurzen Online-Interview freuen.</strong> Dabei erzähle ich Ihnen gerne mehr über meinen bisherigen Weg, meine Motivation und darüber, warum ich mich gerade für eine Ausbildung in Ihrem Unternehmen interessiere.
 
 Meine Bewerbungsunterlagen finden Sie im Anhang.
 
