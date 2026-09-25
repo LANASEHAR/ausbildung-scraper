@@ -26,47 +26,68 @@ API_RETRIES = 3
 API_BACKOFF = (2.0, 5.0, 10.0)
 
 SEARCH_QUERIES = [
-    "Kaufmann Groß- und Außenhandelsmanagement Ausbildung",
-    "Kauffrau Groß- und Außenhandelsmanagement Ausbildung",
-    "Kaufmann Außenhandelsmanagement Ausbildung",
-    "Kauffrau Außenhandelsmanagement Ausbildung",
-    "Kaufmann Großhandel Ausbildung",
-    "Kauffrau Großhandel Ausbildung",
-    "Kaufmann Export Ausbildung",
-    "Kauffrau Export Ausbildung",
-    "Kaufmann Import Export Ausbildung",
-    "Kauffrau Import Export Ausbildung",
-    "Kaufmann Spedition und Logistikdienstleistung Ausbildung",
-    "Kauffrau Spedition und Logistikdienstleistung Ausbildung",
-    "Kaufmann Logistik Ausbildung",
-    "Kauffrau Logistik Ausbildung",
-    "Kaufmann Disposition Ausbildung",
-    "Kauffrau Disposition Ausbildung",
-    "Kaufmännische Ausbildung Logistik Disposition",
-    "Kaufmann Büromanagement Ausbildung",
-    "Kauffrau Büromanagement Ausbildung",
-    "Kaufmann im E-Commerce Ausbildung",
-    "Kauffrau im E-Commerce Ausbildung",
-    "Kaufmann im Einzelhandel Ausbildung",
-    "Kauffrau im Einzelhandel Ausbildung",
+    "Hotelfachfrau Ausbildung", "Hotelfachmann Ausbildung", "Hotelkauffrau Ausbildung", "Hotelkaufmann Ausbildung",
+    "Fachfrau für Systemgastronomie Ausbildung", "Fachmann für Systemgastronomie Ausbildung",
+    "Kauffrau im Einzelhandel Ausbildung", "Kaufmann im Einzelhandel Ausbildung",
+    "Kauffrau für Spedition und Logistikdienstleistung Ausbildung", "Kaufmann für Spedition und Logistikdienstleistung Ausbildung",
+    "Kauffrau im Groß- und Außenhandelsmanagement Ausbildung", "Kaufmann im Groß- und Außenhandelsmanagement Ausbildung",
+    "Industriekauffrau Ausbildung", "Industriekaufmann Ausbildung",
 ]
 
-# High-volume collection. We keep collecting until these ceilings are reached,
-# then sort the resulting offers newest -> oldest before sending them to Sheets.
-TARGET_OFFERS = 3000
-MAX_SEARCH_PAGES_PER_QUERY = 100
-MAX_DETAIL_PAGES = 5000
-DETAIL_WORKERS = 8
-DETAIL_TIMEOUT = 18
-
-DEEP_SEARCH = True
-DEEP_SEARCH_WORKERS = 8
-DEEP_SEARCH_TIMEOUT = 12
-DEEP_SEARCH_MAX_COMPANIES = 1400
-DEEP_SEARCH_MAX_SITE_PAGES = 6
-DEEP_SEARCH_MAX_SEARCH_RESULTS = 8
-DEEP_SEARCH_DELAY = (0.15, 0.4)
-
+ROLE_PRIORITY = [
+    ("Hotelfachfrau / Hotelkauffrau", 6, ("hotelfachfrau","hotelfachmann","hotelkauffrau","hotelkaufmann","hotelmanagement")),
+    ("Fachfrau für Systemgastronomie", 5, ("fachfrau für systemgastronomie","fachfrau fur systemgastronomie","fachmann für systemgastronomie","fachmann fur systemgastronomie","systemgastronomie")),
+    ("Kauffrau im Einzelhandel", 4, ("kauffrau im einzelhandel","kaufmann im einzelhandel","kauffrau einzelhandel","kaufmann einzelhandel")),
+    ("Kauffrau für Spedition und Logistikdienstleistung", 3, ("kauffrau für spedition und logistikdienstleistung","kauffrau fur spedition und logistikdienstleistung","kaufmann für spedition und logistikdienstleistung","kaufmann fur spedition und logistikdienstleistung","spedition und logistikdienstleistung","speditionskauffrau","speditionskaufmann")),
+    ("Kauffrau im Groß- und Außenhandelsmanagement", 2, ("kauffrau im groß- und außenhandelsmanagement","kauffrau im gross- und aussenhandelsmanagement","kaufmann im groß- und außenhandelsmanagement","kaufmann im gross- und aussenhandelsmanagement","groß- und außenhandelsmanagement","gross- und aussenhandelsmanagement")),
+    ("Industriekauffrau", 1, ("industriekauffrau","industriekaufmann")),
+]
+REGION_PRIORITY = [
+    ("Ostbayern & Bayerische Alpen", 7, ("ostbayern","niederbayern","oberpfalz","passau","regensburg","landshut","deggendorf","straubing","dingolfing","kelheim","amberg","weiden","cham","bayerischer wald","bayerische alpen","garmisch-partenkirchen","garmisch","rosenheim","traunstein","berchtesgadener land","berchtesgaden","miesbach","bad reichenhall","allgäu","kempten","sonthofen","oberstdorf")),
+    ("Thüringen & Sachsen", 6, ("thüringen","thueringen","erfurt","jena","weimar","gera","suhl","gotha","eisenach","sachsen","dresden","leipzig","chemnitz","zwickau","görlitz","goerlitz","plauen","bautzen","freiberg")),
+    ("Schwarzwald, Bodensee & industrielles Baden-Württemberg", 5, ("baden-württemberg","baden-wuerttemberg","schwarzwald","bodensee","stuttgart","karlsruhe","mannheim","heidelberg","ulm","heilbronn","pforzheim","freiburg","offenburg","villingen-schwenningen","reutlingen","tübingen","tuebingen","konstanz","friedrichshafen","ravensburg","lörrach","loerrach","böblingen","boeblingen","esslingen","aalen","singen","donaueschingen")),
+    ("Mecklenburg-Vorpommern", 4, ("mecklenburg-vorpommern","mecklenburg vorpommern","rostock","schwerin","wismar","stralsund","greifswald","neubrandenburg","güstrow","guestrow","waren","usedom")),
+    ("NRW & Südwestfalen", 3, ("nordrhein-westfalen","nordrhein westfalen","nrw","südwestfalen","suedwestfalen","düsseldorf","duesseldorf","köln","koeln","bonn","aachen","dortmund","essen","bochum","duisburg","münster","muenster","bielefeld","wuppertal","krefeld","neuss","mönchengladbach","moenchengladbach","hagen","siegen","arnsberg","olpe","meschede","lüdenscheid","luedenscheid","iserlohn","soest","paderborn","gütersloh","guetersloh")),
+    ("West-Niedersachsen & französisch-deutscher Grenzraum", 2, ("west-niedersachsen","westniedersachsen","niedersachsen","osnabrück","osnabrueck","emsland","lingen","papenburg","meppen","cloppenburg","vechta","oldenburg","ammerland","grafschaft bentheim","nordhorn","aurich","leer","saarland","saarbrücken","saarbruecken","rheinland-pfalz","trier","kaiserslautern","koblenz","landau","zweibrücken","zweibruecken","kehl","ortenau")),
+]
+PRIMARY_SOURCE_DOMAINS=["ihk-lehrstellenboerse.de","arbeitsagentur.de/jobsuche","meine-ausbildung-in-niedersachsen.de","ausbildung.nrw","meine-ausbildung.de","ihk-ausbildungsatlas.de","ausbildungsatlas.ihk.de","ausbildungsatlas.unikam.de"]
+SECTOR_SOURCE_DOMAINS=["yourfirm.de","logistikmitarbeiter.de","hotelcareer.de","hogapage.de","gastgebervonmorgen.de","dehoga.de/ausbildung","systemgastronomie-ausbildung.de","azubiyo.de"]
+ALL_SOURCE_DOMAINS=PRIMARY_SOURCE_DOMAINS+SECTOR_SOURCE_DOMAINS
+ROLE_SEARCH_TERMS={
+"Hotelfachfrau / Hotelkauffrau":'"Hotelfachfrau" OR "Hotelkauffrau" OR "Hotelfachmann" OR "Hotelkaufmann"',
+"Fachfrau für Systemgastronomie":'"Fachfrau für Systemgastronomie" OR "Fachmann für Systemgastronomie"',
+"Kauffrau im Einzelhandel":'"Kauffrau im Einzelhandel" OR "Kaufmann im Einzelhandel"',
+"Kauffrau für Spedition und Logistikdienstleistung":'"Kauffrau für Spedition und Logistikdienstleistung" OR "Kaufmann für Spedition und Logistikdienstleistung"',
+"Kauffrau im Groß- und Außenhandelsmanagement":'"Kauffrau im Groß- und Außenhandelsmanagement" OR "Kaufmann im Groß- und Außenhandelsmanagement"',
+"Industriekauffrau":'"Industriekauffrau" OR "Industriekaufmann"',
+}
+REGION_SEARCH_TERMS={
+"Ostbayern & Bayerische Alpen":'"Ostbayern" OR "Niederbayern" OR "Oberpfalz" OR "Bayerische Alpen" OR "Allgäu"',
+"Thüringen & Sachsen":'"Thüringen" OR "Sachsen" OR "Erfurt" OR "Dresden" OR "Leipzig" OR "Chemnitz"',
+"Schwarzwald, Bodensee & industrielles Baden-Württemberg":'"Baden-Württemberg" OR "Schwarzwald" OR "Bodensee" OR "Stuttgart" OR "Karlsruhe" OR "Freiburg" OR "Ulm"',
+"Mecklenburg-Vorpommern":'"Mecklenburg-Vorpommern" OR "Rostock" OR "Schwerin" OR "Stralsund" OR "Greifswald"',
+"NRW & Südwestfalen":'"Nordrhein-Westfalen" OR "NRW" OR "Südwestfalen" OR "Dortmund" OR "Düsseldorf" OR "Köln" OR "Siegen"',
+"West-Niedersachsen & französisch-deutscher Grenzraum":'"West-Niedersachsen" OR "Osnabrück" OR "Emsland" OR "Oldenburg" OR "Saarland" OR "Rheinland-Pfalz" OR "Saarbrücken" OR "Trier"',
+}
+TARGET_OFFERS=10000
+MAX_SEARCH_PAGES_PER_QUERY=100
+MAX_DETAIL_PAGES=12000
+EXTERNAL_SEARCH_RESULTS=20
+DETAIL_WORKERS=10
+DETAIL_TIMEOUT=18
+DEEP_SEARCH=True
+DEEP_SEARCH_WORKERS=12
+DEEP_SEARCH_TIMEOUT=12
+DEEP_SEARCH_MAX_COMPANIES=5000
+DEEP_SEARCH_MAX_SITE_PAGES=8
+DEEP_SEARCH_MAX_SEARCH_RESULTS=12
+DEEP_SEARCH_DELAY=(0.1,0.3)
+WEBHOOK_TIMEOUT=180
+WEBHOOK_RETRIES=4
+WEBHOOK_BATCH_SIZE=250
+WEBHOOK_RETRY_DELAYS=(45,90,150)
+SEARCH_DELAY=(0.35,0.8)
+DETAIL_DELAY=(0.15,0.45)
 WEBHOOK_TIMEOUT = 180
 WEBHOOK_RETRIES = 4
 WEBHOOK_BATCH_SIZE = 250
@@ -268,43 +289,64 @@ def api_search_page(session, query, page):
     return []
 
 
-def collect_links():
-    session = make_session(BASE_URL + "/jobsuche/")
-    links, seen = [], set()
-    for query in SEARCH_QUERIES:
-        if len(links) >= MAX_DETAIL_PAGES:
-            break
-        print(f"[+] AUSBILDUNG Recherche: {query}")
-        empty_pages = 0
-        for page in range(1, MAX_SEARCH_PAGES_PER_QUERY + 1):
-            try:
-                batch = api_search_page(session, query, page)
-            except requests.RequestException as exc:
-                print(f"[!] BA API recherche échouée {query} page {page}: {exc}")
-                time.sleep(random.uniform(3.0, 6.0))
-                continue
-            new_count = 0
-            for link in batch:
-                if link not in seen:
-                    seen.add(link)
-                    links.append(link)
-                    new_count += 1
-                    if len(links) >= MAX_DETAIL_PAGES:
-                        break
-            print(f"    page {page}: {new_count} nouvelles offres (total {len(links)})")
-            empty_pages = empty_pages + 1 if (not batch or new_count == 0) else 0
-            if empty_pages >= 2 or len(links) >= MAX_DETAIL_PAGES:
-                break
-            time.sleep(random.uniform(*SEARCH_DELAY))
-    if not links:
-        raise RuntimeError(
-            "BA Jobsuche API n'a retourné aucune offre après les variantes "
-            "v6 sans wo, v6 avec wo=Deutschland et v4/app. "
-            "Aucune donnée ne sera envoyée au Sheet."
-        )
-    print(f"[*] {len(links)} liens uniques AUSBILDUNG collectés.")
-    return links
+def _bing_search(session, query, count=EXTERNAL_SEARCH_RESULTS):
+    r=session.get("https://www.bing.com/search?q="+quote_plus(query)+f"&count={count}&setlang=de-DE",timeout=DEEP_SEARCH_TIMEOUT)
+    r.raise_for_status()
+    soup=BeautifulSoup(r.text,"html.parser")
+    out=[]
+    for item in soup.select("li.b_algo"):
+        link=item.select_one("h2 a[href]")
+        if link:
+            snippet=item.select_one(".b_caption p")
+            out.append((decode_search_url(link.get("href")),clean(link.get_text(" ",strip=True)),clean(snippet.get_text(" ",strip=True)) if snippet else ""))
+    return out
 
+def _source_search_queries():
+    return [(rn,rol,dom,f"site:{dom} {ROLE_SEARCH_TERMS[rol]} Ausbildung {REGION_SEARCH_TERMS[rn]}")
+            for rn in REGION_SEARCH_TERMS for rol in ROLE_SEARCH_TERMS for dom in ALL_SOURCE_DOMAINS]
+
+def _collect_external_links():
+    session=make_session(); found=[]; seen=set(); queries=_source_search_queries()
+    print(f"[*] Multi-source search: {len(queries)} source/region/role queries.")
+    for n,(rn,rol,dom,q) in enumerate(queries,1):
+        try: results=_bing_search(session,q)
+        except requests.RequestException as exc:
+            print(f"[!] Source search échouée ({dom} / {rn} / {rol}): {exc}"); continue
+        base_domain=dom.split("/")[0]; added=0
+        for url,title,snippet in results:
+            host=host_of(url)
+            if not host or not (host==base_domain or host.endswith("."+base_domain)): continue
+            if url in seen: continue
+            seen.add(url); found.append({"url":url,"source":dom,"region_query":rn,"role_query":rol,"search_title":title,"search_snippet":snippet}); added+=1
+            if len(found)>=MAX_DETAIL_PAGES: break
+        if added: print(f"[+] SOURCE {n}/{len(queries)} | {dom} | {rn} | {rol} | +{added} (total {len(found)})")
+        if n%25==0: print(f"[*] Source search progress {n}/{len(queries)} | {len(found)} unique links")
+        time.sleep(random.uniform(*SEARCH_DELAY))
+        if len(found)>=MAX_DETAIL_PAGES: break
+    return found
+
+def collect_links():
+    session=make_session(BASE_URL+"/jobsuche/"); links=[]; seen=set()
+    for query in SEARCH_QUERIES:
+        if len(links)>=MAX_DETAIL_PAGES: break
+        print(f"[+] BA Ausbildung Recherche: {query}"); empty_pages=0
+        for page in range(1,MAX_SEARCH_PAGES_PER_QUERY+1):
+            try: batch=api_search_page(session,query,page)
+            except requests.RequestException as exc:
+                print(f"[!] BA API recherche échouée {query} page {page}: {exc}"); continue
+            new_count=0
+            for link in batch:
+                if link not in seen: seen.add(link); links.append(link); new_count+=1
+                if len(links)>=MAX_DETAIL_PAGES: break
+            print(f"    page {page}: {new_count} nouvelles offres (total BA {len(links)})")
+            empty_pages=empty_pages+1 if (not batch or new_count==0) else 0
+            if empty_pages>=2 or len(links)>=MAX_DETAIL_PAGES: break
+            time.sleep(random.uniform(*SEARCH_DELAY))
+    for item in _collect_external_links():
+        if item["url"] not in seen: seen.add(item["url"]); links.append(item)
+    if not links: raise RuntimeError("Aucune offre trouvée sur les sources Ausbildung demandées.")
+    print(f"[*] Total liens uniques collectés (BA + portails/secteurs): {len(links)}")
+    return links
 
 def extract_offer_date(text):
     """Extract the Ausbildungsbeginn / posting date when available.
@@ -465,51 +507,105 @@ def job_priority_from_role(role):
     return "P3"
 
 
-def job_sort_key(job):
-    priority = job.get("priorite") or job_priority_from_role(job.get("role_cible", ""))
-    priority_order = {"P1": 3, "P2": 2, "P3": 1}
-    raw = clean(job.get("date_offre"))
-    match = re.search(r"(\d{4}-\d{2}-\d{2})", raw)
-    date_key = match.group(1) if match else "0000-00-00"
-    return (
-        priority_order.get(priority, 0),
-        date_key,
-        int(job.get("score_priorite", 0) or 0),
-        job.get("date_detection") or "",
-        job.get("id") or "",
-    )
+def detect_target_role(job):
+    text=_normalized_text(clean(job.get("intitule",""))+" "+clean(job.get("role_cible",""))+" "+clean(job.get("description","")))
+    for role_name,rank,terms in ROLE_PRIORITY:
+        if any(_normalized_text(term) in text for term in terms): return role_name,rank
+    return "",0
 
+def detect_region(job):
+    text=_normalized_text(clean(job.get("lieu",""))+" "+clean(job.get("intitule",""))+" "+clean(job.get("description",""))[:2500])
+    for region_name,rank,terms in REGION_PRIORITY:
+        if any(_normalized_text(term) in text for term in terms): return region_name,rank
+    return "Rest Deutschland",1
+
+def extract_posting_sort_date(job):
+    raw=clean(job.get("date_offre","")); m=re.search(r"(\d{4}-\d{2}-\d{2})",raw)
+    if m: return m.group(1)
+    m=re.search(r"(\d{1,2})[./](\d{1,2})[./](\d{2,4})",raw)
+    if m:
+        d,mo,y=m.groups(); y=("20"+y) if len(y)==2 else y
+        return f"{int(y):04d}-{int(mo):02d}-{int(d):02d}"
+    return "0000-00-00"
+
+def job_sort_key(job):
+    rn,rr=detect_region(job); ro,ror=detect_target_role(job)
+    return (rr,ror,extract_posting_sort_date(job),clean(job.get("date_detection","")),clean(job.get("id","")))
 
 def prioritize_jobs(jobs):
-    """Filter target roles and classify by market need/international accessibility."""
-    target_terms = (
-        "groß- und außenhandelsmanagement", "großhandel", "außenhandel", "aussenhandel",
-        "export", "import", "spedition", "logistikdienstleistung", "disposition",
-        "büromanagement", "e-commerce", "ecommerce", "einzelhandel", "verkäufer",
-        "verkaufer", "industriekaufmann", "industriekauffrau", "tourismus", "reiseverkehr",
-        "lagerlogistik",
-    )
-    filtered = []
+    filtered=[]; seen=set()
     for job in jobs:
-        text = (
-            clean(job.get("intitule", "")) + " " +
-            clean(job.get("role_cible", "")) + " " +
-            clean(job.get("description", ""))
-        ).lower()
-        if any(term in text for term in target_terms):
-            if is_physically_unsuitable(job):
-                print(f"[SKIP] körperlich ungeeignete Ausbildung: {job.get('intitule', '')}")
-                continue
-
-            priority, score, signal, _ = market_priority(job)
-            job["priorite"] = priority
-            job["score_priorite"] = score
-            job["signal_marche"] = signal
-            job["role_cible"] = priority_role_label(job)
-            filtered.append(job)
-
-    filtered.sort(key=job_sort_key, reverse=True)
+        if not isinstance(job,dict): continue
+        role_name,role_rank=detect_target_role(job)
+        if not role_name: continue
+        if is_physically_unsuitable(job):
+            print(f"[SKIP] körperlich ungeeignete Ausbildung: {job.get('intitule','')}"); continue
+        region_name,region_rank=detect_region(job)
+        job["prioritaet_region"]=region_rank; job["region_cible"]=region_name
+        job["prioritaet_ausbildung"]=role_rank; job["role_cible"]=role_name
+        if job.get("id") in seen: continue
+        seen.add(job.get("id")); filtered.append(job)
+    filtered.sort(key=job_sort_key,reverse=True)
+    print(f"[*] Filtrage: {len(filtered)} offres conservées sur les six Ausbildung cibles.")
+    print("[*] Ordre: régions 1→6 puis reste; Ausbildung 1→6; nouvelles offres puis anciennes.")
     return filtered
+
+def _normalized_text(value):
+    return clean(value).lower().replace("ä","a").replace("ö","o").replace("ü","u").replace("ß","ss")
+
+def _detect_role_title(title,text):
+    t=_normalized_text(clean(title)+" "+clean(text))
+    if any(x in t for x in ("hotelfachfrau","hotelfachmann","hotelkauffrau","hotelkaufmann","hotelmanagement")): return "Hotelfachfrau / Hotelkauffrau"
+    if "systemgastronomie" in t: return "Fachfrau für Systemgastronomie"
+    if "einzelhandel" in t: return "Kauffrau im Einzelhandel"
+    if "spedition und logistikdienstleistung" in t or "speditionskauffrau" in t or "speditionskaufmann" in t: return "Kauffrau für Spedition und Logistikdienstleistung"
+    if "gross- und aussenhandelsmanagement" in t: return "Kauffrau im Groß- und Außenhandelsmanagement"
+    if "industriekauffrau" in t or "industriekaufmann" in t: return "Industriekauffrau"
+    return ""
+
+def parse_external_detail(link):
+    session=make_session(link); host=host_of(link)
+    base={"date_detection":time.strftime("%Y-%m-%d %H:%M"),"date_offre":"","statut":"NOUVEAU","role_cible":"","intitule":"Ausbildung","entreprise":"Entreprise non indiquée","lieu":"Deutschland","emails_rh":"","site_entreprise":"","source":host,"lien":link,"id":"src_"+hashlib.sha256(link.encode()).hexdigest()[:20],"description":""}
+    try:
+        r=session.get(link,timeout=DETAIL_TIMEOUT,allow_redirects=True); r.raise_for_status()
+        soup=BeautifulSoup(r.text,"html.parser"); text=clean(soup.get_text(" ",strip=True)); h1=soup.find("h1")
+        title=clean(h1.get_text(" ",strip=True) if h1 else (soup.title.get_text(" ",strip=True) if soup.title else ""))
+        company=""; location=""; published=""; description=""; email=extract_email(soup)
+        for script in soup.find_all("script",type="application/ld+json"):
+            try:
+                data=json.loads(script.string or script.get_text() or "{}"); items=data if isinstance(data,list) else [data]
+                for item in items:
+                    if not isinstance(item,dict) or item.get("@type")!="JobPosting": continue
+                    title=clean(item.get("title") or title); published=clean(item.get("datePosted") or item.get("dateCreated") or published)
+                    description=clean(item.get("description") or description)
+                    org=item.get("hiringOrganization") or {}
+                    if isinstance(org,dict): company=clean(org.get("name") or company)
+                    loc=item.get("jobLocation") or {}
+                    if isinstance(loc,list): loc=loc[0] if loc else {}
+                    if isinstance(loc,dict):
+                        addr=loc.get("address") or {}
+                        if isinstance(addr,dict): location=clean(" ".join(str(x) for x in (addr.get("postalCode"),addr.get("addressLocality"),addr.get("addressRegion")) if x))
+                    break
+            except Exception: pass
+        if not company:
+            for pat in (r"(?:Arbeitgeber|Unternehmen|Firma)\s*:?\s*(.+?)(?:\s+Arbeitsort|\s+Ausbildungsbeginn|\s+Aufgaben|$)",r"bei\s+(.+?)(?:\s+in\s+|\s+für\s+|\s+zum\s+|\s+ab\s+|$)"):
+                m=re.search(pat,text,re.I)
+                if m: company=clean(m.group(1)); break
+        if not location:
+            for pat in (r"(?:Arbeitsort|Ort|Standort)\s*:?\s*(.+?)(?:\s+Anstellungsart|\s+Ausbildungsbeginn|\s+Beginn|$)",r"\b(\d{5})\s+([A-ZÄÖÜ][A-Za-zÄÖÜäöüß\-]+(?:\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß\-]+){0,2})\b"):
+                m=re.search(pat,text,re.I)
+                if m: location=clean(" ".join(m.groups())); break
+        if not published: published=extract_offer_date(text)
+        role=_detect_role_title(title,text)
+        if not role: return None
+        base.update({"intitule":title or role,"entreprise":company or "Entreprise non indiquée","lieu":location or "Deutschland","emails_rh":email,"role_cible":role,"date_offre":published,"description":description or text[:8000]})
+        return base
+    except requests.RequestException as exc:
+        print(f"[!] source detail inaccessible: {link} -> {exc}"); return None
+    except Exception as exc:
+        print(f"[!] source parsing erreur: {link} -> {exc}"); return None
+    finally:
+        time.sleep(random.uniform(*DETAIL_DELAY))
 
 def parse_detail(link):
     session = make_session(BASE_URL + "/jobsuche/")
@@ -640,6 +736,9 @@ def parse_detail(link):
             return base
         finally:
             time.sleep(random.uniform(*DETAIL_DELAY))
+
+    if not link.startswith("aaapi://") and "arbeitsagentur.de" not in host_of(link):
+        return parse_external_detail(link)
 
     # Legacy HTML fallback for any non-API link.
     match = re.search(r"/jobsuche/jobdetail/([^/?#]+)", link)
