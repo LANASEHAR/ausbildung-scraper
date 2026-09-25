@@ -384,6 +384,53 @@ INTERNATIONAL_SIGNALS = (
     "englischkenntnisse", "fremdsprachen",
 )
 
+PHYSICAL_EXCLUSION_SIGNALS = (
+    # Truck / driving jobs — not the target.
+    "berufskraftfahrer", "berufskraftfahrerin", "kraftfahrer", "kraftfahrerin",
+    "lkw-fahrer", "lkw fahrer", "lkw-fahrerin", "lkw fahrerin",
+    "fahrer ce", "fahrer c", "fahrer klasse c", "fahrer klasse ce",
+    "busfahrer", "busfahrerin", "auslieferungsfahrer", "auslieferungsfahrerin",
+    "kurierfahrer", "kurierfahrerin",
+
+    # Explicitly physical / heavy-work requirements.
+    "schwere lasten", "schwer heben", "schweres heben", "heben und tragen",
+    "körperlich belastbar", "körperliche belastbarkeit", "körperliche arbeit",
+    "körperlich anspruchsvoll", "körperlich anstrengend",
+    "be- und entladen", "be und entladen", "be-/entladen",
+    "regelmäßig schwer", "schwere körperliche",
+)
+
+PHYSICAL_EXCLUSION_TITLE_SIGNALS = (
+    "berufskraftfahrer", "kraftfahrer", "lkw-fahrer", "lkw fahrer",
+    "fahrer ce", "fahrer c", "busfahrer", "auslieferungsfahrer",
+    "kurierfahrer",
+)
+
+def is_physically_unsuitable(job):
+    """Exclude listings centered on truck driving or explicit heavy physical work."""
+    title = clean(job.get("intitule", "")).lower()
+    text = (
+        title + " " +
+        clean(job.get("role_cible", "")) + " " +
+        clean(job.get("description", ""))
+    ).lower()
+
+    if any(signal in title for signal in PHYSICAL_EXCLUSION_TITLE_SIGNALS):
+        return True
+
+    # A listing mentioning loading/unloading alone is not necessarily enough;
+    # exclude when it is paired with a physical-work indicator.
+    heavy_hits = sum(1 for signal in PHYSICAL_EXCLUSION_SIGNALS if signal in text)
+    if heavy_hits >= 1:
+        return True
+
+    # Specific warehouse profiles that are primarily physical are outside the
+    # user's target. Kaufmännische logistics roles remain eligible.
+    if "fachkraft für lagerlogistik" in text or "fachkraft lagerlogistik" in text:
+        return True
+
+    return False
+
 def market_priority(job):
     text = (
         clean(job.get("intitule", "")) + " " +
@@ -483,6 +530,10 @@ def prioritize_jobs(jobs):
             clean(job.get("description", ""))
         ).lower()
         if any(term in text for term in target_terms):
+            if is_physically_unsuitable(job):
+                print(f"[SKIP] körperlich ungeeignete Ausbildung: {job.get('intitule', '')}")
+                continue
+
             priority, score, signal, _ = market_priority(job)
             job["priorite"] = priority
             job["score_priorite"] = score
