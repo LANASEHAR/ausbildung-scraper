@@ -4,9 +4,9 @@
  * Google Apps Script pour Google Sheet "Ausbildung applications"
  *
  * FONCTIONS PRINCIPALES :
- *   doPost(e)                        → Webhook INSERT + UPDATE avec déduplication ID/email
+ *   doPost(e)                        → Webhook INSERT + UPDATE avec déduplication par ID/email
  *   traiterAusbildungCandidatures()  → Envoi emails + relances 48h (max 30/run)
- *   getCV(intitule, roleCible)        → Mapping 5 CVs par spécialité Kauffrau
+ *   getCV(intitule, roleCible)        → Mapping CV par spécialité Kauffrau
  *   configurerDeclencheurs()          → Installe le trigger horaire automatique
  *
  * MAPPING CV (fichiers confirmés sur Google Drive) :
@@ -89,23 +89,6 @@ const COL = {
 function getSheet() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   return ss.getSheetByName(CONFIG.NOM_ONGLET) || ss.getActiveSheet();
-}
-
-/**
- * Ajoute les colonnes de classement si le Sheet utilise encore l'ancien format A:L.
- */
-function ensurePriorityColumns(sheet) {
-  const headers = ["Date offre", "Priorité", "Score profil", "Signal marché", "Site officiel"];
-  const startCol = COL.DATE_OFFRE + 1;
-
-  if (sheet.getMaxColumns() < startCol + headers.length - 1) {
-    sheet.insertColumnsAfter(sheet.getMaxColumns(), startCol + headers.length - 1 - sheet.getMaxColumns());
-  }
-
-  for (let i = 0; i < headers.length; i++) {
-    const cell = sheet.getRange(1, startCol + i);
-    if (!cell.getValue()) cell.setValue(headers[i]);
-  }
 }
 
 /**
@@ -246,7 +229,6 @@ function doPost(e) {
     lock.waitLock(25000);
 
     const sheet = getSheet();
-    ensurePriorityColumns(sheet);
     const allData = sheet.getDataRange().getValues();
     const { existingIds, existingEmails } = buildSheetIndexes(allData);
 
@@ -328,12 +310,6 @@ function doPost(e) {
         if (currentEmail) existingEmails.delete(currentEmail);
         existingEmails.add(newEmail);
 
-        if (job.site_entreprise) allData[rowIndex][COL.SITE_ENTREPRISE] = job.site_entreprise;
-        if (job.date_offre) allData[rowIndex][COL.DATE_OFFRE] = job.date_offre;
-        if (job.priorite) allData[rowIndex][COL.PRIORITE] = job.priorite;
-        if (job.score_profil !== undefined && job.score_profil !== null) allData[rowIndex][COL.SCORE_PROFIL] = job.score_profil;
-        if (job.signal_marche) allData[rowIndex][COL.SIGNAL_MARCHE] = job.signal_marche;
-
         updated++;
         changed = true;
       }
@@ -401,11 +377,6 @@ function doPost(e) {
         jobId,
         "",
         "",
-        job.date_offre || "",
-        job.priorite || "",
-        job.score_profil || "",
-        job.signal_marche || "",
-        job.site_entreprise || "",
       ]);
 
       existingIds.add(jobId);
@@ -701,6 +672,16 @@ ${getSignatureHTML()}
  *   - Statut "CANDIDATURE_ENVOYEE" → Envoie relance 48h si délai atteint
  * Maximum CONFIG.BATCH_LIMIT envois par exécution.
  */
+function extrairePriorite(roleCible) {
+  const m = String(roleCible || "").match(/^\s*(P1|P2|P3)\s*[|—:-]/i);
+  if (m) return m[1].toUpperCase();
+
+  const text = String(roleCible || "").toLowerCase();
+  if (/einzelhandel|verkäufer|verkaufer|lagerlogistik|großhandel|grosshandel|außenhandel|aussenhandel/.test(text)) return "P1";
+  if (/spedition|logistikdienstleistung|disposition|büromanagement|industriekaufmann|industriekauffrau/.test(text)) return "P2";
+  return "P3";
+}
+
 function traiterAusbildungCandidatures() {
   const lock = LockService.getScriptLock();
 
@@ -742,18 +723,14 @@ function traiterAusbildungCandidatures() {
       if (status === "CANDIDATURE_ENVOYEE") rowIndexes.push(i);
     }
 
-    // P1 first, then P2/P3. Inside a priority, newer offer date first.
+    // P1/P2/P3 is stored inside the original ROLE_CIBLE column.
+    // No new Sheet columns are required.
     rowIndexes.sort((a, b) => {
-      const pa = String(data[a][COL.PRIORITE] || "P3").trim();
-      const pb = String(data[b][COL.PRIORITE] || "P3").trim();
+      const pa = extrairePriorite(data[a][COL.ROLE_CIBLE]);
+      const pb = extrairePriorite(data[b][COL.ROLE_CIBLE]);
       const order = {P1: 3, P2: 2, P3: 1};
       const priorityDiff = (order[pb] || 0) - (order[pa] || 0);
       if (priorityDiff !== 0) return priorityDiff;
-
-      const da = new Date(data[a][COL.DATE_OFFRE] || 0).getTime() || 0;
-      const db = new Date(data[b][COL.DATE_OFFRE] || 0).getTime() || 0;
-      if (db !== da) return db - da;
-
       return a - b;
     });
 
