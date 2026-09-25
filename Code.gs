@@ -628,15 +628,22 @@ function traiterAusbildungCandidatures() {
       if (status === "CANDIDATURE_ENVOYEE") rowIndexes.push(i);
     }
 
-    // P1/P2/P3 is stored inside the original ROLE_CIBLE column.
-    // No new Sheet columns are required.
+    // Same ordering as the scraper/Sheet: region priority → Ausbildung
+    // priority → newest offer date. Metadata columns are populated by doPost.
     rowIndexes.sort((a, b) => {
-      const pa = extrairePriorite(data[a][COL.ROLE_CIBLE]);
-      const pb = extrairePriorite(data[b][COL.ROLE_CIBLE]);
-      const order = {P1: 3, P2: 2, P3: 1};
-      const priorityDiff = (order[pb] || 0) - (order[pa] || 0);
-      if (priorityDiff !== 0) return priorityDiff;
-      return a - b;
+      const regionDiff =
+        Number(data[b][COL.PRIORITE_REGION] || 0) -
+        Number(data[a][COL.PRIORITE_REGION] || 0);
+      if (regionDiff !== 0) return regionDiff;
+
+      const ausbildungDiff =
+        Number(data[b][COL.PRIORITE_AUSBILDUNG] || 0) -
+        Number(data[a][COL.PRIORITE_AUSBILDUNG] || 0);
+      if (ausbildungDiff !== 0) return ausbildungDiff;
+
+      const dateB = new Date(data[b][COL.DATE_OFFRE] || 0).getTime() || 0;
+      const dateA = new Date(data[a][COL.DATE_OFFRE] || 0).getTime() || 0;
+      return dateB - dateA;
     });
 
     for (const i of rowIndexes) {
