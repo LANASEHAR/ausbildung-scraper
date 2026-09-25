@@ -1,11 +1,6 @@
 name: Ausbildung Job Scraper
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'ausbildung_scraper.py'
-      - 'daily_runner.py'
   schedule:
     # One complete collection every 24 hours.
     # 02:00 UTC = 04:00 CEST / 03:00 CET.
