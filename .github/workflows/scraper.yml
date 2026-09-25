@@ -2,7 +2,8 @@ name: Ausbildung Job Scraper
 
 on:
   schedule:
-    # Two complete collections per day at 06:00 and 18:00 UTC.\n    - cron: '0 6,18 * * *'
+    # Two complete collections per day at 06:00 and 18:00 UTC.
+    - cron: '0 6,18 * * *'
   workflow_dispatch:
 
 concurrency:
