@@ -83,12 +83,6 @@ DEEP_SEARCH_WORKERS=12
 DEEP_SEARCH_TIMEOUT=12
 DEEP_SEARCH_MAX_SEARCH_RESULTS=12
 DEEP_SEARCH_DELAY=(0.1,0.3)
-WEBHOOK_TIMEOUT=180
-WEBHOOK_RETRIES=4
-WEBHOOK_BATCH_SIZE=250
-WEBHOOK_RETRY_DELAYS=(45,90,150)
-SEARCH_DELAY=(0.35,0.8)
-DETAIL_DELAY=(0.15,0.45)
 WEBHOOK_TIMEOUT = 180
 WEBHOOK_RETRIES = 4
 WEBHOOK_BATCH_SIZE = 250
@@ -344,31 +338,106 @@ def _collect_external_links():
         time.sleep(random.uniform(*SEARCH_DELAY))
     return found
 
-def collect_links():
-    session=make_session(BASE_URL+"/jobsuche/"); links=[]; seen=set()
+def _iter_ba_links():
+    """Yield BA links incrementally so discovered offers can be parsed/uploaded immediately."""
+    session = make_session(BASE_URL + "/jobsuche/")
+    seen = set()
+
     for query in SEARCH_QUERIES:
         if scrape_time_exhausted():
-            print("[!] Temps de scraping atteint pendant la collecte BA.")
-            break
-        print(f"[+] BA Ausbildung Recherche: {query}"); empty_pages=0; page=1
+            return
+        print(f"[+] BA Ausbildung Recherche: {query}")
+        empty_pages = 0
+        page = 1
+
         while not scrape_time_exhausted():
-            try: batch=api_search_page(session,query,page)
+            try:
+                batch = api_search_page(session, query, page)
             except requests.RequestException as exc:
-                print(f"[!] BA API recherche échouée {query} page {page}: {exc}"); page += 1; continue
-            new_count=0
+                print(f"[!] BA API recherche échouée {query} page {page}: {exc}")
+                page += 1
+                continue
+
+            new_count = 0
             for link in batch:
-                if link not in seen: seen.add(link); links.append(link); new_count+=1
-            print(f"    page {page}: {new_count} nouvelles offres (total BA {len(links)})")
-            empty_pages=empty_pages+1 if (not batch or new_count==0) else 0
-            if empty_pages>=2:
+                if link in seen:
+                    continue
+                seen.add(link)
+                new_count += 1
+                yield link
+
+            print(f"    page {page}: {new_count} nouvelles offres")
+            empty_pages = empty_pages + 1 if (not batch or new_count == 0) else 0
+            if empty_pages >= 2:
                 break
+
             page += 1
             time.sleep(random.uniform(*SEARCH_DELAY))
-    if not scrape_time_exhausted():
-        for item in _collect_external_links():
-            url=item["url"]
-            if url not in seen: seen.add(url); links.append(url)
-    if not links: raise RuntimeError("Aucune offre trouvée sur les sources Ausbildung demandées.")
+
+
+def _iter_external_links():
+    """Yield portal/sector links incrementally instead of building one huge list."""
+    session = make_session()
+    seen = set()
+    queries = _source_search_queries()
+    print(f"[*] Multi-source search: {len(queries)} source/region/role queries.")
+
+    for n, (rn, rol, dom, q) in enumerate(queries, 1):
+        if scrape_time_exhausted():
+            return
+
+        try:
+            results = _bing_search(session, q)
+        except requests.RequestException as exc:
+            print(f"[!] Source search échouée ({dom} / {rn} / {rol}): {exc}")
+            continue
+
+        base_domain = dom.split("/")[0]
+        added = 0
+
+        for url, title, snippet in results:
+            host = host_of(url)
+            if not host or not (host == base_domain or host.endswith("." + base_domain)):
+                continue
+            if url in seen:
+                continue
+            seen.add(url)
+            added += 1
+            yield url
+
+        if added:
+            print(f"[+] SOURCE {n}/{len(queries)} | {dom} | {rn} | {rol} | +{added}")
+        if n % 25 == 0:
+            print(f"[*] Source search progress {n}/{len(queries)} | {len(seen)} unique links")
+
+        time.sleep(random.uniform(*SEARCH_DELAY))
+
+
+def iter_collected_links():
+    """Interleave BA and portal discovery so one source cannot consume the whole run."""
+    ba = _iter_ba_links()
+    external = _iter_external_links()
+    ba_done = external_done = False
+
+    while not scrape_time_exhausted() and not (ba_done and external_done):
+        if not ba_done:
+            try:
+                yield next(ba)
+            except StopIteration:
+                ba_done = True
+
+        if not external_done and not scrape_time_exhausted():
+            try:
+                yield next(external)
+            except StopIteration:
+                external_done = True
+
+
+def collect_links():
+    """Compatibility wrapper returning all discovered links."""
+    links = list(iter_collected_links())
+    if not links:
+        raise RuntimeError("Aucune offre trouvée sur les sources Ausbildung demandées.")
     print(f"[*] Total liens uniques collectés (BA + portails/secteurs): {len(links)}")
     return links
 
@@ -830,18 +899,37 @@ def parse_detail(link):
         time.sleep(random.uniform(*DETAIL_DELAY))
 
 def scrape_details(links):
-    """Parse as many offer pages as possible until the shared time budget ends."""
+    """Parse a bounded batch of offer pages without queueing the entire run in memory."""
     jobs = []
+    links = list(dict.fromkeys(links))
+    if not links:
+        return jobs
+
     executor = ThreadPoolExecutor(max_workers=DETAIL_WORKERS)
-    futures = {executor.submit(parse_detail, link): link for link in links}
-    pending = set(futures)
+    pending = set()
+    iterator = iter(links)
+    submitted = 0
     processed = 0
+
+    def refill():
+        nonlocal submitted
+        while len(pending) < DETAIL_WORKERS * 2 and not scrape_time_exhausted():
+            try:
+                link = next(iterator)
+            except StopIteration:
+                return
+            pending.add(executor.submit(parse_detail, link))
+            submitted += 1
+
     try:
+        refill()
         while pending and not scrape_time_exhausted():
             wait_timeout = min(5.0, scrape_time_remaining())
             done, pending = wait(pending, timeout=wait_timeout, return_when=FIRST_COMPLETED)
             if not done:
+                refill()
                 continue
+
             for future in done:
                 processed += 1
                 try:
@@ -853,18 +941,20 @@ def scrape_details(links):
                     jobs.append(job)
                     if job.get("emails_rh"):
                         print(f"[+] email offre: {job['emails_rh']} | {job['entreprise']}")
-                if processed % 50 == 0:
-                    count = sum(1 for x in jobs if x.get("emails_rh"))
-                    print(f"[*] détails traités: {processed}/{len(links)} | offres: {len(jobs)} | avec email offre: {count}")
+
+            refill()
+
+            if processed and processed % 50 == 0:
+                count = sum(1 for x in jobs if x.get("emails_rh"))
+                print(f"[*] détails traités: {processed}/{len(links)} | offres: {len(jobs)} | avec email offre: {count}")
+
     finally:
         for future in pending:
             future.cancel()
         executor.shutdown(wait=True, cancel_futures=True)
 
     jobs = list({job["id"]: job for job in jobs}.values())
-    print(f"[*] Offres finales: {len(jobs)} | avec email présent sur l'offre: {sum(1 for x in jobs if x.get('emails_rh'))}")
-    if scrape_time_exhausted():
-        print("[OK] Budget temps atteint: conservation de toutes les offres déjà récupérées.")
+    print(f"[*] Offres finales du batch: {len(jobs)} | avec email: {sum(1 for x in jobs if x.get('emails_rh'))}")
     return jobs
 
 
@@ -1223,39 +1313,8 @@ def update_sheet(jobs):
 
 
 def main():
-    print("=" * 72)
-    print("AUSBILDUNG — 6 TARGET-AUSBILDUNGEN / TIME-BUDGET SCRAPER")
-    print("SOURCE: Bundesagentur für Arbeit + portails/secteurs Ausbildung")
-    print(f"Objectif: scraper sans plafond d'offres, pendant ~{SCRAPE_TIME_BUDGET_SECONDS / 3600:.1f} h")
-    print("=" * 72)
-
-    links = collect_links()
-    jobs = scrape_details(links)
-
-    # Classify every retained offer with the same P1/P2/P3 strategy
-    # used by daily_runner.py.
-    jobs = prioritize_jobs(jobs)
-    # 1. Offers go to Sheets immediately after offer scraping.
-    if jobs:
-        send_to_sheet(jobs)
-        print("[OK] Offres envoyées au Sheet AVANT le deep search.")
-
-    # 2. Deep search runs after the first Sheet write, once per unique company.
-    jobs = enrich_missing_emails(jobs)
-
-    # 3. Only email/site fields are updated in existing rows.
-    update_sheet(jobs)
-
-    email_count = sum(1 for job in jobs if job.get("emails_rh"))
-    site_count = sum(1 for job in jobs if job.get("site_entreprise"))
-    if len(jobs) < TARGET_OFFERS:
-        print(f"[!] Objectif {TARGET_OFFERS} offres non atteint: {len(jobs)} offres.")
-    else:
-        print(f"[OK] Objectif offres atteint: {len(jobs)}")
-    print(f"[OK] Sites officiels vérifiés: {site_count}")
-    print(f"[OK] Emails publics vérifiés: {email_count}")
-    print("[OK] Run terminé.")
-
+    print("Utiliser daily_runner.py comme point d'entrée du workflow.")
+    print("Le runner gère la collecte incrémentale, les uploads par batch et le budget temps.")
 
 
 if __name__ == "__main__":
