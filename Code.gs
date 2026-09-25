@@ -90,7 +90,7 @@ function getSheet() {
  * Ajoute les colonnes de classement si le Sheet utilise encore l'ancien format A:L.
  */
 function ensurePriorityColumns(sheet) {
-  const headers = ["Date offre", "Priorité", "Score profil", "Signal marché"];
+  const headers = ["Date offre", "Priorité", "Score profil", "Signal marché", "Site officiel"];
   const startCol = COL.DATE_OFFRE + 1;
 
   if (sheet.getMaxColumns() < startCol + headers.length - 1) {
@@ -323,7 +323,7 @@ function doPost(e) {
         if (currentEmail) existingEmails.delete(currentEmail);
         existingEmails.add(newEmail);
 
-        if (job.site_entreprise) allData[rowIndex][COL.SOURCE + 1] = allData[rowIndex][COL.SOURCE];
+        if (job.site_entreprise) allData[rowIndex][COL.SITE_ENTREPRISE] = job.site_entreprise;
         if (job.date_offre) allData[rowIndex][COL.DATE_OFFRE] = job.date_offre;
         if (job.priorite) allData[rowIndex][COL.PRIORITE] = job.priorite;
         if (job.score_profil !== undefined && job.score_profil !== null) allData[rowIndex][COL.SCORE_PROFIL] = job.score_profil;
@@ -379,7 +379,7 @@ function doPost(e) {
       // Do not reject a second offer merely because the company/contact email
       // is already present on another offer. IDs are the offer-level identity.
       // The sender protects the contact from duplicate applications.
-      if (existingEmails.has(email)) {
+      if (email && existingEmails.has(email)) {
         duplicateEmails++;
       }
 
@@ -400,6 +400,7 @@ function doPost(e) {
         job.priorite || "",
         job.score_profil || "",
         job.signal_marche || "",
+        job.site_entreprise || "",
       ]);
 
       existingIds.add(jobId);
@@ -413,8 +414,8 @@ function doPost(e) {
         .setValues(rowsToAppend);
     }
 
-    Logger.log("[INSERT] " + rowsToAppend.length + " ajoutées | IDs doublons: " + duplicateIds +
-      " | emails doublons: " + duplicateEmails + " | emails invalides/absents: " + invalidEmails);
+    Logger.log("[INSERT] " + rowsToAppend.length + " ajoutées | IDs doublons ignorés: " + duplicateIds +
+      " | offres partageant un email existant: " + duplicateEmails + " | offres sans email conservées pour enrichissement: " + invalidEmails);
 
     return ContentService
       .createTextOutput(JSON.stringify({
