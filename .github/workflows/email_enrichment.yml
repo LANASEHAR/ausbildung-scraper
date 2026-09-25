@@ -2,7 +2,9 @@ name: Ausbildung Email Enrichment
 
 on:
   schedule:
-    - cron: '0 */6 * * *'
+    # Run between the two long scrape windows so new offers get enriched
+    # after they have been written to Sheets.
+    - cron: '0 0,12 * * *'
   workflow_dispatch:
 
 concurrency:
