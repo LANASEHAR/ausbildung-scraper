@@ -26,7 +26,7 @@ const CONFIG = {
   // Identité complète pour les emails
   NOM:         "Halima Essaouaf",
   EMAIL:       "essaouafhalima@gmail.com",
-  TEL:         "+33 X XX XX XX XX",     // ← À compléter
+  TEL:         "+212 6 XX XX XX XX",     // À remplacer par le numéro réel avant activation
   LINKEDIN:    "linkedin.com/in/halima-essaouaf",  // ← À compléter
 
   // Nom de l'onglet dans le Google Sheet (fallback sur onglet actif)
@@ -605,9 +605,21 @@ Die Tourismusbranche begeistert mich durch ihre Vielseitigkeit und den tägliche
 ${salutation}
 ${motivation}
 
-Anbei finden Sie meine vollständigen Bewerbungsunterlagen (Lebenslauf) als PDF-Datei. Ich freue mich sehr auf die Möglichkeit, mich in einem persönlichen Gespräch – telefonisch oder per Video-Call – vorzustellen und mehr über Ihre Ausbildung zu erfahren.
+Ich bringe über fünf Jahre praktische Berufserfahrung in internationalen und kundenorientierten Arbeitsumgebungen mit. Dabei habe ich unter anderem in den Bereichen Customer Service, B2B-Kommunikation, E-Commerce, CRM, Auftragsbearbeitung und digitale Arbeitsprozesse gearbeitet.
 
-Über eine positive Rückmeldung würde ich mich sehr freuen.
+Der tägliche Kontakt mit Kunden und Geschäftspartnern hat mir gezeigt, wie wichtig Zuverlässigkeit, Organisation, Kommunikation und eigenständiges Arbeiten sind. Diese Erfahrung möchte ich gerne in Ihr Unternehmen einbringen und gleichzeitig neue fachliche Kenntnisse erwerben.
+
+Warum möchte ich trotz meiner bisherigen Berufserfahrung eine Ausbildung in Deutschland beginnen? Weil ich meine praktischen Kenntnisse gezielt mit einer anerkannten beruflichen Qualifikation verbinden möchte. Ich möchte nicht nur theoretisch lernen, sondern das Gelernte direkt im Arbeitsalltag anwenden und mich langfristig in einem deutschen Unternehmen entwickeln.
+
+Darüber hinaus verfüge ich über einen DEUG-Hochschulabschluss. Ich lerne Deutsch mit dem konkreten Ziel, beruflich in Deutschland Fuß zu fassen, und arbeite kontinuierlich daran, meine Sprachkenntnisse weiter zu verbessern. Neue Aufgaben lerne ich schnell, arbeite strukturiert und übernehme gerne Verantwortung.
+
+Besonders an Ihrer Ausbildung interessiert mich die Möglichkeit, meine bisherige praktische Erfahrung einzubringen und gleichzeitig die fachlichen Grundlagen dieses Berufs systematisch zu erlernen. Genau diese Verbindung aus Erfahrung, Lernen und praktischer Anwendung suche ich für meinen nächsten beruflichen Schritt.
+
+Meine Bewerbungsunterlagen finden Sie im Anhang.
+
+Über eine Einladung zu einem persönlichen Gespräch oder einem kurzen Online-Interview würde ich mich sehr freuen. Gerne erzähle ich Ihnen mehr über meine Motivation und meine bisherigen Erfahrungen.
+
+Vielen Dank für Ihre Zeit und die Prüfung meiner Bewerbung.
 
 Mit freundlichen Grüßen
 ${getSignatureHTML()}
@@ -691,7 +703,18 @@ function traiterAusbildungCandidatures() {
     // Cache des CV pour éviter de relire Drive 30 fois.
     const cvCache = {};
 
-    for (let i = 1; i < data.length && compteur < limite; i++) {
+    const rowIndexes = [];
+    for (let i = 1; i < data.length; i++) {
+      const status = String(data[i][COL.STATUT] || "").trim();
+      if (status === "NOUVEAU") rowIndexes.push(i);
+    }
+    for (let i = 1; i < data.length; i++) {
+      const status = String(data[i][COL.STATUT] || "").trim();
+      if (status === "CANDIDATURE_ENVOYEE") rowIndexes.push(i);
+    }
+
+    for (const i of rowIndexes) {
+      if (compteur >= limite) break;
       const row = data[i];
 
       const statut = String(row[COL.STATUT] || "").trim();
