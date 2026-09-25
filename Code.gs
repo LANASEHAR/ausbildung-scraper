@@ -417,11 +417,35 @@ function getTitreAusbildung(specialite){
 function getCV(intitule,roleCible){
   const specialite=detecterSpecialite(intitule,roleCible), filename=CONFIG.CV_MAPPING[specialite];
   if(!specialite||!filename) return null;
+
   const folders=DriveApp.getFoldersByName(CONFIG.CV_FOLDER_NAME);
   if(!folders.hasNext()){Logger.log("[CV] Dossier introuvable: "+CONFIG.CV_FOLDER_NAME);return null;}
-  const folder=folders.next(), files=folder.getFilesByName(filename);
-  if(files.hasNext()) return files.next();
-  Logger.log("[CV] CV manquant dans "+CONFIG.CV_FOLDER_NAME+": "+filename); return null;
+  const folder=folders.next();
+
+  // 1) Exact filename match.
+  const exact=folder.getFilesByName(filename);
+  if(exact.hasNext()) return exact.next();
+
+  // 2) Strict role-keyword fallback inside the same folder, so renamed PDFs
+  // still work without ever falling back to another Ausbildung.
+  const keywords={
+    hotelfachfrau:["hotelfachfrau","hotelfachmann","hotelkkauffrau","hotelkauffrau","hotelkaufmann"],
+    systemgastronomie:["systemgastronomie"],
+    einzelhandel:["einzelhandel"],
+    spedition:["spedition","logistikdienstleistung"],
+    handel:["gross","groß","aussenhandel","außenhandel"],
+    industrie:["industriekauffrau","industriekaufmann"]
+  }[specialite]||[];
+
+  const files=folder.getFiles();
+  while(files.hasNext()){
+    const file=files.next();
+    const name=file.getName().toLowerCase();
+    if(keywords.some(k=>name.includes(k))) return file;
+  }
+
+  Logger.log("[CV] Kein passender CV in "+CONFIG.CV_FOLDER_NAME+" für "+specialite);
+  return null;
 }
 
 
