@@ -16,6 +16,9 @@ permissions:
 jobs:
   scrape_jobs:
     runs-on: ubuntu-latest
+    # GitHub-hosted jobs have a 6-hour hard limit; the scraper itself stops
+    # after ~4h30 so there is enough time to finish uploads cleanly.
+    timeout-minutes: 300
 
     steps:
       - name: Checkout repository
@@ -35,7 +38,7 @@ jobs:
       - name: Validate Python syntax
         run: python -m py_compile ausbildung_scraper.py daily_runner.py
 
-      - name: Run twice-daily mass scraper
+      - name: Run twice-daily time-budget scraper
         env:
           GOOGLE_SHEET_WEBHOOK_URL: ${{ secrets.GOOGLE_SHEET_WEBHOOK_URL }}
         run: python -u daily_runner.py
