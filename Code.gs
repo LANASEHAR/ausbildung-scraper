@@ -87,6 +87,23 @@ function getSheet() {
 }
 
 /**
+ * Ajoute les colonnes de classement si le Sheet utilise encore l'ancien format A:L.
+ */
+function ensurePriorityColumns(sheet) {
+  const headers = ["Date offre", "Priorité", "Score profil", "Signal marché"];
+  const startCol = COL.DATE_OFFRE + 1;
+
+  if (sheet.getMaxColumns() < startCol + headers.length - 1) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), startCol + headers.length - 1 - sheet.getMaxColumns());
+  }
+
+  for (let i = 0; i < headers.length; i++) {
+    const cell = sheet.getRange(1, startCol + i);
+    if (!cell.getValue()) cell.setValue(headers[i]);
+  }
+}
+
+/**
  * Valide qu'un email est utilisable (contient "@" et n'est pas un placeholder).
  */
 function normalizeEmail(email) {
@@ -224,6 +241,7 @@ function doPost(e) {
     lock.waitLock(25000);
 
     const sheet = getSheet();
+    ensurePriorityColumns(sheet);
     const allData = sheet.getDataRange().getValues();
     const { existingIds, existingEmails } = buildSheetIndexes(allData);
 
@@ -298,14 +316,19 @@ function doPost(e) {
 
         if (!newEmail || currentEmail === newEmail) continue;
 
-        if (existingEmails.has(newEmail) && newEmail !== currentEmail) {
-          duplicateEmails++;
-          continue;
-        }
-
+        // The same verified company email may legitimately belong to
+        // several duplicate/related offers. Keep it on each matching row.
+        // buildSheetIndexes/sender logic prevents sending the same address twice.
         allData[rowIndex][COL.EMAILS_RH] = newEmail;
         if (currentEmail) existingEmails.delete(currentEmail);
         existingEmails.add(newEmail);
+
+        if (job.site_entreprise) allData[rowIndex][COL.SOURCE + 1] = allData[rowIndex][COL.SOURCE];
+        if (job.date_offre) allData[rowIndex][COL.DATE_OFFRE] = job.date_offre;
+        if (job.priorite) allData[rowIndex][COL.PRIORITE] = job.priorite;
+        if (job.score_profil !== undefined && job.score_profil !== null) allData[rowIndex][COL.SCORE_PROFIL] = job.score_profil;
+        if (job.signal_marche) allData[rowIndex][COL.SIGNAL_MARCHE] = job.signal_marche;
+
         updated++;
         changed = true;
       }
@@ -349,12 +372,15 @@ function doPost(e) {
 
       if (!email) {
         invalidEmails++;
-        continue;
+        // Keep the offer anyway: the enrichment workflow needs this row
+        // to search the official company website later.
       }
 
+      // Do not reject a second offer merely because the company/contact email
+      // is already present on another offer. IDs are the offer-level identity.
+      // The sender protects the contact from duplicate applications.
       if (existingEmails.has(email)) {
         duplicateEmails++;
-        continue;
       }
 
       rowsToAppend.push([
@@ -364,17 +390,20 @@ function doPost(e) {
         job.intitule || "",
         job.entreprise || "",
         job.lieu || "Deutschland (Allemagne)",
-        email,
+        email || "",
         job.source || "Scraper Cloud Ausbildung",
         job.lien || "",
         jobId,
         "",
         "",
+        job.date_offre || "",
+        job.priorite || "",
+        job.score_profil || "",
+        job.signal_marche || "",
       ]);
 
-      // Prevent duplicates inside the SAME request.
       existingIds.add(jobId);
-      existingEmails.add(email);
+      if (email) existingEmails.add(email);
     }
 
     // One setValues() call instead of appendRow() for every job.
@@ -614,7 +643,7 @@ Vielleicht fragen Sie sich, warum ich trotz meiner bisherigen Berufserfahrung ei
 
 Darüber hinaus verfüge ich über einen <strong>DEUG-Hochschulabschluss</strong>. Mein Ziel ist es, meine bisherigen Erfahrungen nicht einfach fortzusetzen, sondern sie mit einer fundierten Ausbildung zu verbinden und mich langfristig in einem deutschen Unternehmen weiterzuentwickeln.
 
-Ich lerne Deutsch mit diesem konkreten beruflichen Ziel und verbessere meine Sprachkenntnisse kontinuierlich. Was ich noch nicht kann, lerne ich schnell – und was ich bereits kann, bringe ich gerne ein.
+Ich lerne Deutsch derzeit gezielt auf B2-Niveau weiter, weil ich mich langfristig beruflich in Deutschland entwickeln möchte. Ich verbessere meine Sprachkenntnisse kontinuierlich und arbeite aktiv daran, im beruflichen Alltag sicher und präzise auf Deutsch zu kommunizieren. Was ich noch nicht kann, lerne ich schnell – und was ich bereits kann, bringe ich gerne ein.
 
 <strong>Ich würde mich freuen, wenn wir uns persönlich kennenlernen.</strong> In einem kurzen Gespräch erzähle ich Ihnen gerne mehr über meinen bisherigen Weg, meine Motivation und darüber, warum ich mich gerade für eine Ausbildung in Ihrem Unternehmen interessiere.
 
@@ -706,6 +735,21 @@ function traiterAusbildungCandidatures() {
       const status = String(data[i][COL.STATUT] || "").trim();
       if (status === "CANDIDATURE_ENVOYEE") rowIndexes.push(i);
     }
+
+    // P1 first, then P2/P3. Inside a priority, newer offer date first.
+    rowIndexes.sort((a, b) => {
+      const pa = String(data[a][COL.PRIORITE] || "P3").trim();
+      const pb = String(data[b][COL.PRIORITE] || "P3").trim();
+      const order = {P1: 3, P2: 2, P3: 1};
+      const priorityDiff = (order[pb] || 0) - (order[pa] || 0);
+      if (priorityDiff !== 0) return priorityDiff;
+
+      const da = new Date(data[a][COL.DATE_OFFRE] || 0).getTime() || 0;
+      const db = new Date(data[b][COL.DATE_OFFRE] || 0).getTime() || 0;
+      if (db !== da) return db - da;
+
+      return a - b;
+    });
 
     for (const i of rowIndexes) {
       if (compteur >= limite) break;
