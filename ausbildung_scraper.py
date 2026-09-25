@@ -26,29 +26,32 @@ API_RETRIES = 3
 API_BACKOFF = (2.0, 5.0, 10.0)
 
 SEARCH_QUERIES = [
-    # Priority 1 — strongest fit: wholesale / foreign trade
-    "Kaufmann für Groß- und Außenhandelsmanagement Ausbildung",
-    "Kauffrau für Groß- und Außenhandelsmanagement Ausbildung",
-    "Großhandelsmanagement Ausbildung",
-    "Außenhandelsmanagement Ausbildung",
-    "Groß- und Außenhandel Ausbildung",
-    # Priority 2 — forwarding / logistics services
-    "Kaufmann für Spedition und Logistikdienstleistung Ausbildung",
-    "Kauffrau für Spedition und Logistikdienstleistung Ausbildung",
-    "Spedition und Logistikdienstleistung Ausbildung",
-    "Kaufmann Spedition Ausbildung",
-    "Kauffrau Spedition Ausbildung",
-    # Priority 3 — warehouse logistics
-    "Fachkraft für Lagerlogistik Ausbildung",
-    "Fachkraft Lagerlogistik Ausbildung",
-    "Ausbildung Lagerlogistik",
-    "Ausbildung Logistik Lager",
-    # Priority 4 — retail / sales
-    "Verkäufer Ausbildung",
-    "Verkäuferin Ausbildung",
+    # Highest-priority Kaufmann/Kauffrau roles for this profile:
+    # international B2B sales, customer service, purchasing, trade, logistics,
+    # order coordination, CRM and multilingual communication.
+    "Kaufmann Groß- und Außenhandelsmanagement Ausbildung",
+    "Kauffrau Groß- und Außenhandelsmanagement Ausbildung",
+    "Kaufmann Außenhandelsmanagement Ausbildung",
+    "Kauffrau Außenhandelsmanagement Ausbildung",
+    "Kaufmann Großhandel Ausbildung",
+    "Kauffrau Großhandel Ausbildung",
+    "Kaufmann Export Ausbildung",
+    "Kauffrau Export Ausbildung",
+    "Kaufmann Import Export Ausbildung",
+    "Kauffrau Import Export Ausbildung",
+    "Kaufmann Spedition und Logistikdienstleistung Ausbildung",
+    "Kauffrau Spedition und Logistikdienstleistung Ausbildung",
+    "Kaufmann Logistik Ausbildung",
+    "Kauffrau Logistik Ausbildung",
+    "Kaufmann Disposition Ausbildung",
+    "Kauffrau Disposition Ausbildung",
+    "Kaufmännische Ausbildung Logistik Disposition",
+    "Kaufmann Büromanagement Ausbildung",
+    "Kauffrau Büromanagement Ausbildung",
+    "Kaufmann im E-Commerce Ausbildung",
+    "Kauffrau im E-Commerce Ausbildung",
     "Kaufmann im Einzelhandel Ausbildung",
     "Kauffrau im Einzelhandel Ausbildung",
-    "Einzelhandel Ausbildung",
 ]
 
 # High-volume collection. We keep collecting until these ceilings are reached,
@@ -321,12 +324,31 @@ def extract_offer_date(text):
                 pass
     return ""
 
+PROFILE_KEYWORDS = {
+    "groß": 10, "gross": 10, "außenhandel": 12, "aussenhandel": 12,
+    "export": 11, "import": 8, "international": 7, "b2b": 8,
+    "kunden": 5, "customer": 5, "vertrieb": 6, "sales": 5,
+    "einkauf": 6, "beschaffung": 6, "lieferanten": 5,
+    "logistik": 5, "disposition": 6, "spedition": 5,
+    "auftrags": 4, "crm": 3, "mehrsprach": 6, "kaufmänn": 6,
+    "kaufmann": 6, "kauffrau": 6,
+}
+
+def profile_relevance(job):
+    text = (
+        clean(job.get("intitule", "")) + " " +
+        clean(job.get("role_cible", "")) + " " +
+        clean(job.get("description", ""))
+    ).lower()
+    return sum(weight for keyword, weight in PROFILE_KEYWORDS.items() if keyword in text)
+
 def job_sort_key(job):
-    # Primary order: first publication date, newest -> oldest.
+    # Publication date remains the primary order: newest -> oldest.
+    # Profile relevance only breaks ties between offers with the same date.
     raw = clean(job.get("date_offre"))
     match = re.search(r"(\d{4}-\d{2}-\d{2})", raw)
     date_key = match.group(1) if match else "0000-00-00"
-    return (date_key, job.get("date_detection") or "", job.get("id") or "")
+    return (date_key, profile_relevance(job), job.get("date_detection") or "", job.get("id") or "")
 
 def parse_detail(link):
     session = make_session(BASE_URL + "/jobsuche/")
@@ -894,20 +916,24 @@ def main():
     links = collect_links()
     jobs = scrape_details(links)
 
-    # Keep only the requested families and order by FIRST PUBLICATION date.
-    jobs = [
-        j for j in jobs
-        if j.get("role_cible") in {
-            "Groß- und Außenhandelsmanagement",
-            "Kauffrau/Kaufmann Spedition & Logistikdienstleistung",
-            "Fachkraft für Lagerlogistik",
-            "Verkäufer/in / Einzelhandel",
-        }
-    ]
+    # Keep Kaufmann/Kauffrau roles matching the target profile.
+    # Exclude warehouse-only Fachkraft roles; keep commercial/logistics Kaufmann roles.
+    TARGET_ROLE_TERMS = (
+        "groß- und außenhandelsmanagement", "großhandel", "außenhandel", "aussenhandel",
+        "export", "import", "spedition", "logistikdienstleistung", "disposition",
+        "büromanagement", "e-commerce", "einzelhandel", "verkäufer", "verkaufer"
+    )
+    filtered = []
+    for j in jobs:
+        text = (clean(j.get("intitule", "")) + " " + clean(j.get("role_cible", ""))).lower()
+        if "fachkraft für lagerlogistik" in text or "fachkraft lagerlogistik" in text:
+            continue
+        if any(term in text for term in TARGET_ROLE_TERMS):
+            filtered.append(j)
+    jobs = filtered
     jobs.sort(key=job_sort_key, reverse=True)
-    print("[OK] Priorités: Groß-/Außenhandel + Spedition/Logistik + Lagerlogistik + Einzelhandel")
-    print("[OK] Tri: PREMIÈRE DATE DE PUBLICATION, plus récent -> plus ancien")
-
+    print("[OK] Priorités: Groß-/Außenhandel → Spedition/Logistik → Büro/E-Commerce → Einzelhandel")
+    print("[OK] Profil-Relevanz als Tie-Breaker; Hauptsortierung = neueste Veröffentlichung zuerst")
     # 1. Offers go to Sheets immediately after offer scraping.
     if jobs:
         send_to_sheet(jobs)
