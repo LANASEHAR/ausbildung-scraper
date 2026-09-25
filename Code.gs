@@ -71,12 +71,7 @@ const COL = {
   ID:              9,  // J
   DATE_ENVOI:    10,  // K
   DATE_RELANCE:  11,  // L
-  DATE_OFFRE:     12,  // M
-  PRIORITE:       13,  // N
-  SCORE_PROFIL:   14,  // O
-  SIGNAL_MARCHE:  15,  // P
-  SITE_ENTREPRISE:16,  // Q
-};
+}
 
 
 // ─────────────────────────────────────────────────────────────────────────────
