@@ -337,8 +337,29 @@ PROFILE_KEYWORDS = {
     "einkauf": 6, "beschaffung": 6, "lieferanten": 5,
     "logistik": 5, "disposition": 6, "spedition": 5,
     "auftrags": 4, "crm": 3, "mehrsprach": 6, "kaufmänn": 6,
-    "kaufmann": 6, "kauffrau": 6,
+    "kaufmann": 6, "kauffrau": 6, "shopify": 7, "e-commerce": 8,
 }
+
+# Strategie für DEIN Profil: praktische Passung + aktueller Ausbildungsmarkt +
+# Signale für internationale Arbeitsumgebungen. "International fit" ist nur
+# ein Proxy; es gibt keine belastbare bundesweite Statistik, die die Konkurrenz
+# speziell für Bewerberinnen aus Marokko nach Ausbildungsberuf misst.
+PRIORITY_PROFILES = [
+    ("P1", 95, ("groß- und außenhandelsmanagement", "großhandel", "außenhandel", "aussenhandel", "export", "import")),
+    ("P1", 94, ("spedition", "logistikdienstleistung", "disposition")),
+    ("P1", 88, ("industriekaufmann", "industriekauffrau")),
+    ("P2", 84, ("e-commerce", "ecommerce")),
+    ("P2", 82, ("büromanagement", "bürokaufmann", "bürokauffrau")),
+    ("P2", 80, ("tourismus", "tourismus und freizeit", "reiseverkehr")),
+    ("P2", 78, ("einzelhandel",)),
+    ("P3", 74, ("verkäufer", "verkaufer")),
+]
+
+INTERNATIONAL_SIGNALS = (
+    "international", "englisch", "english", "mehrsprach", "export", "import",
+    "ausland", "global", "b2b", "internationale kunden", "internationale partner",
+    "internationales team", "englischkenntnisse", "fremdsprachen",
+)
 
 def profile_relevance(job):
     text = (
@@ -348,30 +369,76 @@ def profile_relevance(job):
     ).lower()
     return sum(weight for keyword, weight in PROFILE_KEYWORDS.items() if keyword in text)
 
+def priority_for_job(job):
+    text = (
+        clean(job.get("intitule", "")) + " " +
+        clean(job.get("role_cible", "")) + " " +
+        clean(job.get("description", ""))
+    ).lower()
+
+    category = "P3"
+    base = 65
+    matched_terms = ()
+
+    for candidate, candidate_base, terms in PRIORITY_PROFILES:
+        if any(term in text for term in terms):
+            category = candidate
+            base = candidate_base
+            matched_terms = terms
+            break
+
+    fit = min(15, round(profile_relevance(job) / 3))
+    international = min(10, sum(1 for signal in INTERNATIONAL_SIGNALS if signal in text))
+    score = min(100, base + fit + international)
+
+    market_signal = {
+        "P1": "hohe Nachfrage / viele offene Stellen + starke Profilpassung",
+        "P2": "gute Nachfrage + starke Profilpassung",
+        "P3": "Backup: viele Stellen, aber strategisch weniger passend",
+    }[category]
+
+    # Explicit signals make individual listings more useful for an international
+    # applicant, without pretending that we know their actual competition level.
+    if international >= 2:
+        market_signal += " + internationales Umfeld"
+
+    return category, score, market_signal, matched_terms
+
 def job_sort_key(job):
-    # Publication date remains the primary order: newest -> oldest.
-    # Profile relevance only breaks ties between offers with the same date.
+    # Priority first. Inside each priority: newest publication first.
+    priority = job.get("priorite", "P3")
+    priority_order = {"P1": 3, "P2": 2, "P3": 1}
     raw = clean(job.get("date_offre"))
     match = re.search(r"(\d{4}-\d{2}-\d{2})", raw)
     date_key = match.group(1) if match else "0000-00-00"
-    return (date_key, profile_relevance(job), job.get("date_detection") or "", job.get("id") or "")
+    return (
+        priority_order.get(priority, 0),
+        date_key,
+        int(job.get("score_profil", 0) or 0),
+        job.get("date_detection") or "",
+        job.get("id") or "",
+    )
 
 def prioritize_jobs(jobs):
-    """Filter to target Kaufmann roles and sort newest publication first."""
+    """Filter target roles, classify P1/P2/P3, then newest-first inside each priority."""
     target_terms = (
         "groß- und außenhandelsmanagement", "großhandel", "außenhandel", "aussenhandel",
         "export", "import", "spedition", "logistikdienstleistung", "disposition",
-        "büromanagement", "e-commerce", "einzelhandel", "verkäufer", "verkaufer"
+        "büromanagement", "e-commerce", "ecommerce", "einzelhandel", "verkäufer",
+        "verkaufer", "industriekaufmann", "industriekauffrau", "tourismus", "reiseverkehr"
     )
     filtered = []
     for job in jobs:
         text = (
             clean(job.get("intitule", "")) + " " +
-            clean(job.get("role_cible", ""))
+            clean(job.get("role_cible", "")) + " " +
+            clean(job.get("description", ""))
         ).lower()
-        if "fachkraft für lagerlogistik" in text or "fachkraft lagerlogistik" in text:
-            continue
         if any(term in text for term in target_terms):
+            priority, score, signal, _ = priority_for_job(job)
+            job["priorite"] = priority
+            job["score_profil"] = score
+            job["signal_marche"] = signal
             filtered.append(job)
 
     filtered.sort(key=job_sort_key, reverse=True)
@@ -948,7 +1015,8 @@ def main():
     TARGET_ROLE_TERMS = (
         "groß- und außenhandelsmanagement", "großhandel", "außenhandel", "aussenhandel",
         "export", "import", "spedition", "logistikdienstleistung", "disposition",
-        "büromanagement", "e-commerce", "einzelhandel", "verkäufer", "verkaufer"
+        "büromanagement", "e-commerce", "ecommerce", "einzelhandel", "verkäufer", "verkaufer",
+        "industriekaufmann", "industriekauffrau", "tourismus", "reiseverkehr"
     )
     filtered = []
     for j in jobs:
@@ -959,8 +1027,10 @@ def main():
             filtered.append(j)
     jobs = filtered
     jobs.sort(key=job_sort_key, reverse=True)
-    print("[OK] Priorités: Groß-/Außenhandel → Spedition/Logistik → Büro/E-Commerce → Einzelhandel")
-    print("[OK] Profil-Relevanz als Tie-Breaker; Hauptsortierung = neueste Veröffentlichung zuerst")
+    print("[OK] Priorités P1: Groß-/Außenhandel, Spedition/Logistik, Industriekaufmann")
+    print("[OK] Priorités P2: E-Commerce, Büromanagement, Tourismus, Einzelhandel")
+    print("[OK] P3: Verkäufer als Backup")
+    print("[OK] Innerhalb jeder Priorität: neueste Veröffentlichung zuerst")
     # 1. Offers go to Sheets immediately after offer scraping.
     if jobs:
         send_to_sheet(jobs)
