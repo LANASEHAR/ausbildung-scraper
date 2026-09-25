@@ -34,9 +34,9 @@ jobs:
           pip install requests beautifulsoup4 lxml
 
       - name: Validate Python syntax
-        run: python -m py_compile ausbildung_scraper.py
+        run: python -m py_compile ausbildung_scraper.py daily_runner.py
 
       - name: Run daily mass scraper
         env:
           GOOGLE_SHEET_WEBHOOK_URL: ${{ secrets.GOOGLE_SHEET_WEBHOOK_URL }}
-        run: python -u ausbildung_scraper.py
+        run: python -u daily_runner.py
