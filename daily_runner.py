@@ -44,7 +44,7 @@ def scrape_and_upload_in_batches(links):
 
 def main():
     print("=" * 72)
-    print("AUSBILDUNG KAUFMANN/Kauffrau — DAILY BATCH SCRAPER")
+    print("AUSBILDUNG — 6 TARGET-AUSBILDUNGEN / TWICE-DAILY MULTI-SOURCE SCRAPER")
     print(f"UPLOAD BATCH SIZE: {BATCH_SIZE}")
     print("=" * 72)
 
