@@ -1,83 +1,46 @@
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
 import ausbildung_scraper as scraper
 
 BATCH_SIZE = 100
-DETAIL_WORKERS = scraper.DETAIL_WORKERS
 
 
 def scrape_and_upload_in_batches(links):
-    jobs = []
-
-    with ThreadPoolExecutor(max_workers=DETAIL_WORKERS) as executor:
-        futures = {executor.submit(scraper.parse_detail, link): link for link in links}
-        for n, future in enumerate(as_completed(futures), start=1):
-            try:
-                job = future.result()
-            except Exception as exc:
-                print(f"[!] détail erreur: {exc}")
-                continue
-
-            if job:
-                jobs.append(job)
-
-            if n % 50 == 0:
-                email_count = sum(1 for x in jobs if x.get("emails_rh"))
-                print(f"[*] détails traités: {n}/{len(links)} | offres: {len(jobs)} | avec email BA: {email_count}")
-
-    jobs = list({job["id"]: job for job in jobs}.values())
+    # The scraper itself owns the 4h30 time budget and stops parsing cleanly
+    # when that budget is reached.
+    jobs = scraper.scrape_details(links)
     jobs = scraper.prioritize_jobs(jobs)
 
     if not jobs:
-        raise RuntimeError("Aucune offre Kaufmann ciblée après filtrage.")
+        raise RuntimeError("Aucune offre ciblée après filtrage.")
 
-    # Send already-sorted batches, preserving newest -> oldest order in Sheets.
+    # Upload offers as soon as the scrape phase finishes. The email already
+    # present on the original offer is kept; no deep-search is done here.
+    # Missing-email enrichment is handled by the separate workflow, grouped
+    # once per company.
     for start in range(0, len(jobs), BATCH_SIZE):
         batch = jobs[start:start + BATCH_SIZE]
         print(f"[*] BATCH {start // BATCH_SIZE + 1}: envoi de {len(batch)} offres vers Google Sheets")
         scraper.send_to_sheet(batch)
         print(f"[OK] BATCH envoyé: {len(batch)} offres")
 
+    email_count = sum(1 for job in jobs if job.get("emails_rh"))
     print(f"[OK] Offres ciblées dans Google Sheets: {len(jobs)}")
+    print(f"[OK] Emails déjà présents sur les offres: {email_count}")
     return jobs
 
 
 def main():
     print("=" * 72)
-    print("AUSBILDUNG — 6 TARGET-AUSBILDUNGEN / TWICE-DAILY MULTI-SOURCE SCRAPER")
+    print("AUSBILDUNG — 6 TARGET-AUSBILDUNGEN / TIME-BUDGET MULTI-SOURCE SCRAPER")
     print(f"UPLOAD BATCH SIZE: {BATCH_SIZE}")
+    print(f"SCRAPE BUDGET: ~{scraper.SCRAPE_TIME_BUDGET_SECONDS / 3600:.1f} h")
     print("=" * 72)
 
+    scraper.start_scrape_clock()
     links = scraper.collect_links()
     jobs = scrape_and_upload_in_batches(links)
 
-    # Deep search only after all offers have already been saved.
-    jobs = scraper.enrich_missing_emails(jobs)
-
-    # Update emails and official sites in batches as well.
-    updates = [
-        {
-            "id": j["id"],
-            "emails_rh": j.get("emails_rh", ""),
-            "site_entreprise": j.get("site_entreprise", ""),
-        }
-        for j in jobs
-        if j.get("emails_rh") or j.get("site_entreprise")
-    ]
-
-    for start in range(0, len(updates), BATCH_SIZE):
-        chunk = updates[start:start + BATCH_SIZE]
-        print(f"[*] UPDATE BATCH: {start + 1}-{start + len(chunk)} / {len(updates)}")
-        scraper.post_json({"action": "update", "jobs": chunk}, "Mise à jour emails/sites Google Sheets")
-
-    email_count = sum(1 for job in jobs if job.get("emails_rh"))
-    site_count = sum(1 for job in jobs if job.get("site_entreprise"))
-    if len(jobs) < scraper.TARGET_OFFERS:
-        print(f"[!] Objectif {scraper.TARGET_OFFERS} offres non atteint: {len(jobs)} offres.")
-    else:
-        print(f"[OK] Objectif offres atteint: {len(jobs)}")
-    print(f"[OK] Sites officiels vérifiés: {site_count}")
-    print(f"[OK] Emails publics vérifiés: {email_count}")
+    print("[OK] Les offres sans email sont laissées au workflow Email Enrichment.")
+    print("[OK] Ce workflow ne recherche jamais deux fois la même entreprise pour chaque offre.")
     print("[OK] Run terminé.")
 
 
