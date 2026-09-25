@@ -22,39 +22,19 @@
 // CONFIGURATION — À PERSONNALISER
 // ─────────────────────────────────────────────────────────────────────────────
 
-const CONFIG = {
-  // Identité complète pour les emails
-  NOM:         "Halima Essaouaf",
-  EMAIL:       "essaouafhalima@gmail.com",
-  TEL:         "+212619968131",
-  LINKEDIN:    "linkedin.com/in/halima-essaouaf",  // ← À compléter
-
-  // Nom de l'onglet dans le Google Sheet (fallback sur onglet actif)
-  NOM_ONGLET:  "Ausbildung",
-
-  // Maximum de candidatures réussies par exécution.
-  // Le trigger est horaire : objectif = jusqu'à 30 emails valides / heure.
-  BATCH_LIMIT: 30, // jusqu’à 30 tentatives par passage horaire
-
-  // Pause entre deux envois pour éviter un burst trop agressif.
-  DELAI_ENTRE_EMAILS_MS: 1000,
-
-  // Délai de relance en heures
-  DELAI_RELANCE_H: 48,
-
-  // Mapping des CV sur Google Drive.
-  // Les 2 fichiers fournis existent et correspondent exactement aux noms ci-dessous.
-  // Pour Lagerlogistik et Einzelhandel, le script REFUSE d'envoyer avec un mauvais CV :
-  // il attend le CV spécifique correspondant.
-  CV_MAPPING: {
-    "buero":          "Bewerbung Kauffrau Buromanagemenet Halima Essaouaf.pdf",
-    "ecommerce":      "Bewerbung Kauffrau ECommerce Halima Essaouaf.pdf",
-    "handel":         "Bewerbung Kauffrau GrossAussenhandel Halima Essaouaf.pdf",
-    "spedition":      "Bewerbung Kauffrau Spedition Logistik Halima Essaouaf.pdf",
-    "lagerlogistik":  "Bewerbung Fachkraft Lagerlogistik Halima Essaouaf.pdf",
-    "einzelhandel":   "Bewerbung Verkäuferin Einzelhandel Halima Essaouaf.pdf",
-    "tourismus":      "Bewerbung Kauffrau Tourismus Freizeit Halima Essaouaf.pdf",
-  },
+const CONFIG={
+  NOM:"Halima Essaouaf", EMAIL:"essaouafhalima@gmail.com", TEL:"+212619968131",
+  LINKEDIN:"linkedin.com/in/halima-essaouaf-1b4b81202", NOM_ONGLET:"Ausbildung",
+  BATCH_LIMIT:100, DELAI_ENTRE_EMAILS_MS:1000, DELAI_RELANCE_H:48,
+  CV_FOLDER_NAME:"New Bewerbung",
+  CV_MAPPING:{
+    hotelfachfrau:"Bewerbungsmappe_Hotelfachfrau_Halima_Essaouaf.pdf",
+    systemgastronomie:"Bewerbungsmappe_Fachfrau_fuer_Systemgastronomie_Halima_Essaouaf.pdf",
+    einzelhandel:"Bewerbungsmappe_Kauffrau_im_Einzelhandel_Halima_Essaouaf.pdf",
+    spedition:"Bewerbungsmappe_Kauffrau_fuer_Spedition_und_Logistikdienstleistung_Halima_Essaouaf.pdf",
+    handel:"Bewerbungsmappe_Kauffrau_im_Gross-_und_Aussenhandelsmanagement_Halima_Essaouaf.pdf",
+    industrie:"Bewerbungsmappe_Industriekauffrau_Halima_Essaouaf.pdf"
+  }
 };
 
 // Colonnes du Google Sheet (0-indexées)
@@ -420,119 +400,30 @@ function doPost(e) {
  * Détermine la clé de spécialité à partir du contenu de l'intitulé et du rôle cible.
  * Retourne l'une des clés : "buero" | "ecommerce" | "handel" | "spedition" | "tourismus"
  */
-function detecterSpecialite(intitule, roleCible) {
-  const text = ((intitule || "") + " " + (roleCible || ""))
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-
-  // Priorité aux catégories les plus spécifiques.
-  if (
-    text.includes("lagerlogistik") ||
-    text.includes("fachkraft fur lagerlogistik") ||
-    (text.includes("lager") && text.includes("logistik"))
-  ) {
-    return "lagerlogistik";
-  }
-
-  if (
-    text.includes("einzelhandel") ||
-    text.includes("verkaufer") ||
-    text.includes("verkaeufer") ||
-    text.includes("verkaeuferin")
-  ) {
-    return "einzelhandel";
-  }
-
-  if (
-    text.includes("spedition") ||
-    text.includes("logistikdienstleistung") ||
-    text.includes("speditionskaufmann") ||
-    text.includes("speditionskauffrau")
-  ) {
-    return "spedition";
-  }
-
-  if (
-    text.includes("gross") ||
-    text.includes("aussenhandel") ||
-    text.includes("außenhandel") ||
-    text.includes("grosshandel") ||
-    text.includes("großhandel") ||
-    text.includes("gross- und aussenhandelsmanagement") ||
-    text.includes("groß- und außenhandelsmanagement")
-  ) {
-    return "handel";
-  }
-
-  if (text.includes("e-commerce") || text.includes("ecommerce") || text.includes("e commerce")) {
-    return "ecommerce";
-  }
-
-  if (
-    text.includes("tourismus") ||
-    text.includes("freizeit") ||
-    text.includes("reisebuero") ||
-    text.includes("reiseverkehr")
-  ) {
-    return "tourismus";
-  }
-
-  return "buero";
+function detecterSpecialite(intitule,roleCible){
+  const t=((intitule||"")+" "+(roleCible||"")).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+  if(t.includes("hotelfach")||t.includes("hotelkauffrau")||t.includes("hotelkaufmann")||t.includes("hotelmanagement")) return "hotelfachfrau";
+  if(t.includes("systemgastronomie")) return "systemgastronomie";
+  if(t.includes("einzelhandel")) return "einzelhandel";
+  if(t.includes("spedition")||t.includes("logistikdienstleistung")||t.includes("speditionskauf")) return "spedition";
+  if(t.includes("gross")||t.includes("aussenhandel")||t.includes("grosshandel")) return "handel";
+  if(t.includes("industriekauf")) return "industrie";
+  return "";
+}
+function getTitreAusbildung(specialite){
+  return ({hotelfachfrau:"Hotelfachfrau / Hotelkauffrau",systemgastronomie:"Fachfrau für Systemgastronomie",einzelhandel:"Kauffrau im Einzelhandel",spedition:"Kauffrau für Spedition und Logistikdienstleistung",handel:"Kauffrau im Groß- und Außenhandelsmanagement",industrie:"Industriekauffrau"})[specialite]||"Ausbildungsplatz";
 }
 
-
-/**
- * Titre formel de l'Ausbildung selon la spécialité détectée.
- */
-function getTitreAusbildung(specialite, intitule) {
-  const text = String(intitule || "").toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-
-  if (specialite === "einzelhandel" && text.includes("verkaufer")) {
-    return "Verkäuferin";
-  }
-
-  const titres = {
-    "buero":         "Kauffrau für Büromanagement",
-    "ecommerce":     "Kauffrau im E-Commerce",
-    "handel":        "Kauffrau im Groß- und Außenhandelsmanagement",
-    "spedition":     "Kauffrau für Spedition und Logistikdienstleistung",
-    "lagerlogistik": "Fachkraft für Lagerlogistik",
-    "einzelhandel":  "Kauffrau im Einzelhandel",
-    "tourismus":     "Kauffrau für Tourismus und Freizeit",
-  };
-  return titres[specialite] || "Kauffrau für Büromanagement";
+function getCV(intitule,roleCible){
+  const specialite=detecterSpecialite(intitule,roleCible), filename=CONFIG.CV_MAPPING[specialite];
+  if(!specialite||!filename) return null;
+  const folders=DriveApp.getFoldersByName(CONFIG.CV_FOLDER_NAME);
+  if(!folders.hasNext()){Logger.log("[CV] Dossier introuvable: "+CONFIG.CV_FOLDER_NAME);return null;}
+  const folder=folders.next(), files=folder.getFilesByName(filename);
+  if(files.hasNext()) return files.next();
+  Logger.log("[CV] CV manquant dans "+CONFIG.CV_FOLDER_NAME+": "+filename); return null;
 }
 
-
-/**
- * Recherche et retourne le fichier CV PDF correct depuis Google Drive.
- * Utilise le mapping CONFIG.CV_MAPPING avec les noms de fichiers exacts confirmés.
- * Fallback sur le CV Büromanagement si le CV spécifique est introuvable.
- */
-function getCV(intitule, roleCible) {
-  const specialite = detecterSpecialite(intitule, roleCible);
-  const filename = CONFIG.CV_MAPPING[specialite];
-
-  if (!filename) {
-    Logger.log("[CV] Aucun mapping pour la spécialité: " + specialite);
-    return null;
-  }
-
-  Logger.log("[CV] Spécialité: " + specialite + " → " + filename);
-
-  const files = DriveApp.getFilesByName(filename);
-  if (files.hasNext()) {
-    return files.next();
-  }
-
-  // IMPORTANT : aucun fallback vers un autre métier.
-  // On préfère ne pas envoyer plutôt que d'envoyer le mauvais CV.
-  Logger.log("[CV] MANQUANT : " + filename + " → candidature non envoyée.");
-  return null;
-}
 
 
 
@@ -563,76 +454,34 @@ function getSignatureHTML() {
  * Génère le corps HTML de l'email de candidature initiale.
  * Adapté par spécialité avec des formulations professionnelles en allemand.
  */
-function genererEmailCandidature(entreprise, intitule, roleCible) {
-  const specialite = detecterSpecialite(intitule, roleCible);
-  const titrePoste = getTitreAusbildung(specialite, intitule);
+function genererEmailCandidature(entreprise,intitule,roleCible){
+  const specialite=detecterSpecialite(intitule,roleCible), titrePoste=getTitreAusbildung(specialite);
+  const entrepriseDisplay=(entreprise&&entreprise!=="Unternehmen Deutschland")?entreprise:"Ihr Unternehmen";
+  const motivation={
+    hotelfachfrau:"Bei HBX Group / Hotelbeds betreute ich ein internationales B2B-Kundenportfolio im Bereich Hotellerie und Travel im Nahen Osten. Kundenbindung, Konditionsabstimmung und schnelle Problemlösung gehörten zu meinem Alltag.",
+    systemgastronomie:"Bei Umanis Intermediation (CGI) wurde ich als Top-Verkäuferin ausgezeichnet. Bei Total Call habe ich Kunden technisch und kaufmännisch beraten. Diese Erfahrung in Verkauf und Service möchte ich in die Systemgastronomie einbringen.",
+    einzelhandel:"Ich bringe mehr als fünf Jahre Erfahrung in Vertrieb und Kundenberatung mit. Bei Umanis Intermediation (CGI) wurde ich als Top-Verkäuferin ausgezeichnet; aktuell gehören auch Bestandsüberwachung und Auftragsabwicklung zu meinen Aufgaben.",
+    spedition:"Bei Helpdesk ForYou koordinierte ich die Einsatzplanung von über 100 Fahrern und Mitarbeitenden sowie Touren, Termine und Wartungen. Seit April 2026 arbeite ich mit Beschaffung, Logistik, Bestandsüberwachung, Auftragsabwicklung und Lieferantenabstimmung.",
+    handel:"Seit April 2026 übernehme ich bei Atmlo Chem / EasyChemicalStock Beschaffung, Lieferantenabstimmung, Bestandsüberwachung und Auftragsabwicklung und arbeite mit Excel und ERP Sage. Zuvor betreute ich internationale B2B-Geschäftspartner bei HBX Group / Hotelbeds.",
+    industrie:"Meine aktuelle Tätigkeit bei Atmlo Chem / EasyChemicalStock umfasst Beschaffung, Bestandsüberwachung, Auftragsabwicklung, Rechnungen, Excel-Reporting und ERP Sage. Dazu kommen mehrjährige Erfahrungen im internationalen B2B-Kundenmanagement und Vertrieb."
+  }[specialite]||"Meine bisherige Berufserfahrung verbindet Kundenkontakt, kaufmännische Organisation und strukturierte Arbeitsprozesse.";
+  const body=`Sehr geehrte Damen und Herren,
 
-  const entrepriseDisplay = (entreprise && entreprise !== "Unternehmen Deutschland")
-    ? entreprise
-    : "Ihr Unternehmen";
-
-  // Une formulation spécifique au métier, puis une présentation courte
-  // qui donne au recruteur une vraie raison de vouloir en savoir davantage.
-  const motivationParSpecialite = {
-    "buero": `
 mit großem Interesse bewerbe ich mich um einen Ausbildungsplatz als <strong>${titrePoste}</strong> bei ${entrepriseDisplay}.
-
-Was mich an diesem Beruf besonders anspricht, ist die Verbindung aus Organisation, Kommunikation und Verantwortung. Ich arbeite gerne dort, wo viele Aufgaben zusammenkommen, Prioritäten gesetzt werden müssen und gute Kommunikation den Unterschied macht.`,
-
-    "ecommerce": `
-mit großem Interesse bewerbe ich mich um einen Ausbildungsplatz als <strong>${titrePoste}</strong> bei ${entrepriseDisplay}.
-
-Besonders spannend finde ich die Verbindung von Kunden, digitalen Prozessen und Handel. Durch meine bisherige Arbeit mit E-Commerce, Kundenkommunikation und digitalen Tools habe ich bereits erlebt, wie abwechslungsreich dieser Bereich ist – und möchte dieses Wissen nun fachlich vertiefen.`,
-
-    "handel": `
-mit großem Interesse bewerbe ich mich um einen Ausbildungsplatz als <strong>${titrePoste}</strong> bei ${entrepriseDisplay}.
-
-Der internationale Handel interessiert mich besonders, weil er Kommunikation, Organisation und wirtschaftliches Denken miteinander verbindet. Die Zusammenarbeit mit Kunden und Geschäftspartnern in unterschiedlichen Märkten entspricht sehr gut meiner bisherigen internationalen Berufserfahrung.`,
-
-    "spedition": `
-mit großem Interesse bewerbe ich mich um einen Ausbildungsplatz als <strong>${titrePoste}</strong> bei ${entrepriseDisplay}.
-
-An der Spedition und Logistik gefällt mir besonders, dass hinter jedem Auftrag ein konkreter Ablauf steht, der zuverlässig organisiert werden muss. Die Kombination aus Kundenkontakt, Koordination und internationalen Prozessen passt sehr gut zu meiner bisherigen Berufserfahrung.`,
-
-    "tourismus": `
-mit großem Interesse bewerbe ich mich um einen Ausbildungsplatz als <strong>${titrePoste}</strong> bei ${entrepriseDisplay}.
-
-Die Verbindung aus Service, Kommunikation und internationalem Umfeld spricht mich besonders an. Durch meine Erfahrung im Kundenkontakt und meine Sprachkenntnisse bringe ich bereits eine gute Grundlage mit und möchte mich in diesem Beruf gezielt weiterentwickeln.`,
-  };
-
-  const motivation = motivationParSpecialite[specialite] || motivationParSpecialite["buero"];
-
-  const body = `
-Sehr geehrte Damen und Herren,
 
 ${motivation}
 
-Ich bringe <strong>mehr als 5 Jahre praktische Berufserfahrung</strong> in internationalen und kundenorientierten Arbeitsumgebungen mit. Dabei habe ich unter anderem in Customer Service, B2B-Kommunikation, E-Commerce, CRM, Auftragsbearbeitung und digitalen Arbeitsprozessen gearbeitet.
+Ich bringe <strong>mehr als fünf Jahre praktische Berufserfahrung</strong> mit. Trotz meines DEUG in Wirtschaft und Management möchte ich bewusst eine Ausbildung in Deutschland absolvieren, die deutschen Standards systematisch von Grund auf lernen und einen anerkannten IHK-Abschluss erwerben. Gleichzeitig bringe ich bereits Berufserfahrung, Eigenständigkeit, Disziplin und internationale Kommunikationsstärke mit.
 
-Diese Erfahrung hat mir vor allem eines gezeigt: Ich lerne schnell, übernehme Verantwortung und arbeite am liebsten dort, wo ich mit Menschen, Informationen und konkreten Aufgaben etwas bewegen kann.
+Meine Sprachkenntnisse: Arabisch Muttersprache, Französisch C1, Englisch C1, Deutsch B1 abgeschlossen und <strong>B2 aktuell in aktiver Vorbereitung</strong>, Spanisch A2.
 
-Vielleicht fragen Sie sich, warum ich trotz meiner bisherigen Berufserfahrung eine Ausbildung in Deutschland beginnen möchte. Genau darin liegt für mich der nächste Schritt: Ich möchte meine praktische Erfahrung mit einer <strong>anerkannten beruflichen Qualifikation in Deutschland</strong> verbinden, die fachlichen Grundlagen systematisch lernen und das Gelernte unmittelbar im Arbeitsalltag anwenden.
-
-Darüber hinaus verfüge ich über einen <strong>DEUG-Hochschulabschluss</strong>. Mein Ziel ist es, meine bisherigen Erfahrungen nicht einfach fortzusetzen, sondern sie mit einer fundierten Ausbildung zu verbinden und mich langfristig in einem deutschen Unternehmen weiterzuentwickeln.
-
-Ich lerne Deutsch derzeit gezielt auf B2-Niveau weiter, weil ich mich langfristig beruflich in Deutschland entwickeln möchte. Ich verbessere meine Sprachkenntnisse kontinuierlich und arbeite aktiv daran, im beruflichen Alltag sicher und präzise auf Deutsch zu kommunizieren. Was ich noch nicht kann, lerne ich schnell – und was ich bereits kann, bringe ich gerne ein.
-
-<strong>Ich würde mich sehr über die Gelegenheit zu einem kurzen Online-Interview freuen.</strong> Dabei erzähle ich Ihnen gerne mehr über meinen bisherigen Weg, meine Motivation und darüber, warum ich mich gerade für eine Ausbildung in Ihrem Unternehmen interessiere.
-
-Meine Bewerbungsunterlagen finden Sie im Anhang.
-
-Vielen Dank für Ihre Zeit und die Prüfung meiner Bewerbung.
+Meine Bewerbungsunterlagen finden Sie im Anhang. Über die Gelegenheit zu einem persönlichen oder digitalen Gespräch freue ich mich sehr.
 
 Mit freundlichen Grüßen
-${getSignatureHTML()}
-`.trim();
-
-  return { titrePoste, body };
+${getSignatureHTML()}`.trim();
+  return {titrePoste,body};
 }
 
-/**
- * Génère l'email de relance 48h en allemand professionnel.
- */
 function genererEmailRelance(entreprise, intitule, roleCible) {
   const specialite = detecterSpecialite(intitule, roleCible);
   const titrePoste = getTitreAusbildung(specialite);
