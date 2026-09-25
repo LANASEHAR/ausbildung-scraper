@@ -20,8 +20,6 @@ SEARCH_RETRY_DELAY = (1.0, 2.5)
 # Every run reads rows already in Sheets that have no usable email,
 # deduplicates them by company, searches the official company site,
 # and writes verified public emails back to all matching rows.
-MAX_COMPANIES_PER_RUN = None
-
 
 def webhook_url():
     url = os.environ.get("GOOGLE_SHEET_WEBHOOK_URL", "").strip()
