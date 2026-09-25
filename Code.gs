@@ -515,51 +515,76 @@ function getSignatureHTML() {
  * Génère le corps HTML de l'email de candidature initiale.
  * Adapté par spécialité avec des formulations professionnelles en allemand.
  */
-function genererEmailCandidature(entreprise,intitule,roleCible){
-  const specialite=detecterSpecialite(intitule,roleCible), titrePoste=getTitreAusbildung(specialite);
-  const entrepriseDisplay=(entreprise&&entreprise!=="Unternehmen Deutschland")?entreprise:"Ihr Unternehmen";
-  const motivation={
-    hotelfachfrau:"Bei HBX Group / Hotelbeds betreute ich ein internationales B2B-Kundenportfolio im Bereich Hotellerie und Travel im Nahen Osten. Kundenbindung, Konditionsabstimmung und schnelle Problemlösung gehörten zu meinem Alltag.",
-    systemgastronomie:"Bei Umanis Intermediation (CGI) wurde ich als Top-Verkäuferin ausgezeichnet. Bei Total Call habe ich Kunden technisch und kaufmännisch beraten. Diese Erfahrung in Verkauf und Service möchte ich in die Systemgastronomie einbringen.",
-    einzelhandel:"Ich bringe mehr als fünf Jahre Erfahrung in Vertrieb und Kundenberatung mit. Bei Umanis Intermediation (CGI) wurde ich als Top-Verkäuferin ausgezeichnet; aktuell gehören auch Bestandsüberwachung und Auftragsabwicklung zu meinen Aufgaben.",
-    spedition:"Bei Helpdesk ForYou koordinierte ich die Einsatzplanung von über 100 Fahrern und Mitarbeitenden sowie Touren, Termine und Wartungen. Seit April 2026 arbeite ich mit Beschaffung, Logistik, Bestandsüberwachung, Auftragsabwicklung und Lieferantenabstimmung.",
-    handel:"Seit April 2026 übernehme ich bei Atmlo Chem / EasyChemicalStock Beschaffung, Lieferantenabstimmung, Bestandsüberwachung und Auftragsabwicklung und arbeite mit Excel und ERP Sage. Zuvor betreute ich internationale B2B-Geschäftspartner bei HBX Group / Hotelbeds.",
-    industrie:"Meine aktuelle Tätigkeit bei Atmlo Chem / EasyChemicalStock umfasst Beschaffung, Bestandsüberwachung, Auftragsabwicklung, Rechnungen, Excel-Reporting und ERP Sage. Dazu kommen mehrjährige Erfahrungen im internationalen B2B-Kundenmanagement und Vertrieb."
-  }[specialite]||"Meine bisherige Berufserfahrung verbindet Kundenkontakt, kaufmännische Organisation und strukturierte Arbeitsprozesse.";
-  const body=`Sehr geehrte Damen und Herren,
+function genererEmailCandidature(entreprise, intitule, roleCible) {
+  const specialite = detecterSpecialite(intitule, roleCible);
+  const titrePoste = getTitreAusbildung(specialite);
+  const entrepriseConnue = entreprise &&
+    entreprise.trim() &&
+    entreprise.trim() !== "Unternehmen Deutschland";
 
-mit großem Interesse bewerbe ich mich um einen Ausbildungsplatz als <strong>${titrePoste}</strong> bei ${entrepriseDisplay}.
+  // Le nom de l'entreprise n'est utilisé que lorsqu'il a réellement été trouvé.
+  const introduction = entrepriseConnue
+    ? `mit großem Interesse bewerbe ich mich um den Ausbildungsplatz als <strong>${titrePoste}</strong> bei ${entreprise.trim()}.`
+    : `mit großem Interesse bewerbe ich mich um einen Ausbildungsplatz als <strong>${titrePoste}</strong>.`;
 
-${motivation}
+  const motivation = {
+    hotelfachfrau:
+      `Durch meine bisherige Tätigkeit bei HBX Group / Hotelbeds kenne ich die Hotellerie bereits aus der internationalen B2B-Perspektive. Ich habe Geschäftskunden betreut, bei Fragen und Problemen Lösungen gefunden und dabei gelernt, auch in einem internationalen Umfeld zuverlässig und serviceorientiert zu arbeiten. Diese Erfahrung möchte ich nun mit einer fundierten Ausbildung im deutschen Hotelgewerbe verbinden.`,
 
-Ich bringe <strong>mehr als fünf Jahre praktische Berufserfahrung</strong> mit. Trotz meines DEUG in Wirtschaft und Management möchte ich bewusst eine Ausbildung in Deutschland absolvieren, die deutschen Standards systematisch von Grund auf lernen und einen anerkannten IHK-Abschluss erwerben. Gleichzeitig bringe ich bereits Berufserfahrung, Eigenständigkeit, Disziplin und internationale Kommunikationsstärke mit.
+    systemgastronomie:
+      `Der direkte Kontakt mit Menschen und die Arbeit im Service liegen mir besonders. Bei Umanis Intermediation (CGI) wurde ich für meine Verkaufsleistung als Top-Verkäuferin ausgezeichnet, und bei Total Call habe ich Kunden sowohl technisch als auch kaufmännisch beraten. Diese Erfahrung möchte ich nun in einer Ausbildung zur Fachfrau für Systemgastronomie weiterentwickeln und um die praktischen Standards der deutschen Gastronomie ergänzen.`,
 
-Meine Sprachkenntnisse: Arabisch Muttersprache, Französisch C1, Englisch C1, Deutsch B1 abgeschlossen und <strong>B2 aktuell in aktiver Vorbereitung</strong>, Spanisch A2.
+    einzelhandel:
+      `Ich bringe mehr als fünf Jahre Erfahrung im Vertrieb und in der Kundenberatung mit. Bei Umanis Intermediation (CGI) wurde ich als Top-Verkäuferin ausgezeichnet. In meiner aktuellen Tätigkeit gehören außerdem Bestandsüberwachung und Auftragsabwicklung zu meinen Aufgaben. Die Ausbildung sehe ich deshalb als sinnvolle Möglichkeit, meine bisherige Berufserfahrung mit einer anerkannten deutschen Qualifikation im Einzelhandel zu verbinden.`,
 
-Meine Bewerbungsunterlagen finden Sie im Anhang. Über die Gelegenheit zu einem persönlichen oder digitalen Gespräch freue ich mich sehr.
+    spedition:
+      `Logistik und Organisation gehören bereits zu meinem beruflichen Alltag. Bei Helpdesk ForYou koordinierte ich die Einsatzplanung von über 100 Fahrern und Mitarbeitenden sowie Touren, Termine und Wartungen. Seit April 2026 arbeite ich außerdem mit Beschaffung, Logistik, Bestandsüberwachung, Auftragsabwicklung und Lieferantenabstimmung. Diese praktische Erfahrung möchte ich nun gezielt durch eine Ausbildung zur Kauffrau für Spedition und Logistikdienstleistung in Deutschland vertiefen.`,
 
-Mit freundlichen Grüßen
-${getSignatureHTML()}`.trim();
-  return {titrePoste,body};
+    handel:
+      `In meiner aktuellen Tätigkeit bei Atmlo Chem / EasyChemicalStock übernehme ich Aufgaben in der Beschaffung, Lieferantenabstimmung, Bestandsüberwachung und Auftragsabwicklung und arbeite dabei mit Excel und dem ERP-System Sage. Zuvor habe ich bei HBX Group / Hotelbeds internationale B2B-Geschäftspartner betreut. Die Ausbildung im Groß- und Außenhandelsmanagement würde mir die Möglichkeit geben, diese praktische Erfahrung mit einer anerkannten deutschen kaufmännischen Qualifikation zu verbinden.`,
+
+    industrie:
+      `Meine aktuelle Tätigkeit bei Atmlo Chem / EasyChemicalStock umfasst Beschaffung, Bestandsüberwachung, Auftragsabwicklung, Rechnungen, Excel-Reporting und die Arbeit mit dem ERP-System Sage. Dazu kommen mehrere Jahre Erfahrung im internationalen B2B-Kundenmanagement und Vertrieb. Eine Ausbildung zur Industriekauffrau ist für mich daher eine logische Weiterentwicklung, um meine bisherigen Kenntnisse systematisch zu erweitern und gleichzeitig eine anerkannte deutsche Qualifikation zu erwerben.`
+  }[specialite] || `Meine bisherige Berufserfahrung verbindet Kundenkontakt, kaufmännische Aufgaben und strukturierte Arbeitsprozesse. Diese Erfahrung möchte ich nun durch eine fundierte Ausbildung in Deutschland gezielt erweitern.`;
+
+  const body = `
+<p>Sehr geehrte Damen und Herren,</p>
+
+<p>${introduction}</p>
+
+<p>${motivation}</p>
+
+<p>Ich habe in Marokko ein <strong>DEUG (Diplôme d'Études Universitaires Générales) in Wirtschaft und Management</strong> abgeschlossen, einen zweijährigen Hochschulabschluss (Bac+2). Zusätzlich bringe ich mehr als fünf Jahre praktische Berufserfahrung mit.</p>
+
+<p>Gerade deshalb ist die Ausbildung in Deutschland für mich eine bewusste und sinnvolle Ergänzung: Ich möchte meine bisherigen akademischen und beruflichen Kenntnisse mit dem deutschen Ausbildungssystem verbinden, die beruflichen Standards in Deutschland direkt in der Praxis lernen und eine <strong>anerkannte IHK-Qualifikation</strong> erwerben. So kann ich meine bisherige Erfahrung einbringen und gleichzeitig eine solide berufliche Grundlage für meinen weiteren Weg in Deutschland schaffen.</p>
+
+<p>Ich spreche Arabisch als Muttersprache, Französisch auf C1-Niveau, Englisch auf C1-Niveau und Deutsch auf B1-Niveau. Meine B2-Vorbereitung läuft aktuell aktiv. Außerdem spreche ich Spanisch auf A2-Niveau.</p>
+
+<p>Meine Bewerbungsunterlagen finden Sie im Anhang. Über die Gelegenheit, mich kurz persönlich oder per Video vorzustellen, würde ich mich sehr freuen.</p>
+
+<p>Mit freundlichen Grüßen</p>
+${getSignatureHTML()}
+`.trim();
+
+  return { titrePoste, body };
 }
 
 function genererEmailRelance(entreprise, intitule, roleCible) {
   const specialite = detecterSpecialite(intitule, roleCible);
   const titrePoste = getTitreAusbildung(specialite);
-  const entrepriseDisplay = (entreprise && entreprise !== "Unternehmen Deutschland") ? entreprise : null;
-
-  const salutation = "Sehr geehrte Damen und Herren,";
 
   const body = `
-${salutation}
+<p>Sehr geehrte Damen und Herren,</p>
 
-vor zwei Tagen habe ich Ihnen meine Bewerbungsunterlagen für den Ausbildungsplatz als <strong>${titrePoste}</strong> zugesendet und möchte mich kurz erkundigen, ob diese gut bei Ihnen eingegangen sind.
+<p>vor zwei Tagen habe ich Ihnen meine Bewerbung für einen Ausbildungsplatz als <strong>${titrePoste}</strong> geschickt. Ich wollte mich kurz erkundigen, ob meine Unterlagen gut bei Ihnen angekommen sind.</p>
 
-Da ich nach wie vor großes Interesse an einer Ausbildung in Ihrem Unternehmen habe, erlauben Sie mir, meinen Lebenslauf zur Sicherheit erneut beizufügen.
+<p>Ich bin weiterhin sehr an der Ausbildung interessiert und sende Ihnen meinen Lebenslauf vorsichtshalber noch einmal im Anhang.</p>
 
-Ich stehe Ihnen jederzeit für ein erstes Gespräch zur Verfügung und freue mich sehr auf Ihre Rückmeldung.
+<p>Falls Sie noch weitere Unterlagen oder Informationen benötigen, lasse ich Ihnen diese gerne zukommen. Für ein kurzes Gespräch stehe ich Ihnen jederzeit gerne zur Verfügung.</p>
 
-Mit freundlichen Grüßen
+<p>Vielen Dank für Ihre Zeit. Ich freue mich auf Ihre Rückmeldung.</p>
+
+<p>Mit freundlichen Grüßen</p>
 ${getSignatureHTML()}
 `.trim();
 
