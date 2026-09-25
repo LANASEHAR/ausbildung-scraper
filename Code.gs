@@ -51,6 +51,9 @@ const COL = {
   ID:              9,  // J
   DATE_ENVOI:    10,  // K
   DATE_RELANCE:  11,  // L
+  DATE_OFFRE:    12,  // M
+  PRIORITE_REGION: 13, // N
+  PRIORITE_AUSBILDUNG: 14, // O
 }
 
 
