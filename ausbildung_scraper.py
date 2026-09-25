@@ -342,8 +342,8 @@ def collect_links():
             empty_pages=empty_pages+1 if (not batch or new_count==0) else 0
             if empty_pages>=2 or len(links)>=MAX_DETAIL_PAGES: break
             time.sleep(random.uniform(*SEARCH_DELAY))
-    for item in _collect_external_links():
-        if item["url"] not in seen: seen.add(item["url"]); links.append(item)
+    for url in _collect_external_links():
+        if url not in seen: seen.add(url); links.append(url)
     if not links: raise RuntimeError("Aucune offre trouvée sur les sources Ausbildung demandées.")
     print(f"[*] Total liens uniques collectés (BA + portails/secteurs): {len(links)}")
     return links
