@@ -356,6 +356,27 @@ def job_sort_key(job):
     date_key = match.group(1) if match else "0000-00-00"
     return (date_key, profile_relevance(job), job.get("date_detection") or "", job.get("id") or "")
 
+def prioritize_jobs(jobs):
+    """Filter to target Kaufmann roles and sort newest publication first."""
+    target_terms = (
+        "groß- und außenhandelsmanagement", "großhandel", "außenhandel", "aussenhandel",
+        "export", "import", "spedition", "logistikdienstleistung", "disposition",
+        "büromanagement", "e-commerce", "einzelhandel", "verkäufer", "verkaufer"
+    )
+    filtered = []
+    for job in jobs:
+        text = (
+            clean(job.get("intitule", "")) + " " +
+            clean(job.get("role_cible", ""))
+        ).lower()
+        if "fachkraft für lagerlogistik" in text or "fachkraft lagerlogistik" in text:
+            continue
+        if any(term in text for term in target_terms):
+            filtered.append(job)
+
+    filtered.sort(key=job_sort_key, reverse=True)
+    return filtered
+
 def parse_detail(link):
     session = make_session(BASE_URL + "/jobsuche/")
 
