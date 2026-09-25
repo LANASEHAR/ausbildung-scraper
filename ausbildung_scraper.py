@@ -5,7 +5,7 @@ import os
 import random
 import re
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
 from urllib.parse import quote_plus, unquote, urljoin, urlparse
 
 import requests
@@ -69,9 +69,12 @@ REGION_SEARCH_TERMS={
 "NRW & Südwestfalen":'"Nordrhein-Westfalen" OR "NRW" OR "Südwestfalen" OR "Dortmund" OR "Düsseldorf" OR "Köln" OR "Siegen"',
 "West-Niedersachsen & französisch-deutscher Grenzraum":'"West-Niedersachsen" OR "Osnabrück" OR "Emsland" OR "Oldenburg" OR "Saarland" OR "Rheinland-Pfalz" OR "Saarbrücken" OR "Trier"',
 }
-TARGET_OFFERS=10000
-MAX_SEARCH_PAGES_PER_QUERY=100
-MAX_DETAIL_PAGES=12000
+# The scraper is time-budgeted instead of offer-count limited.
+# One GitHub run is allowed to work for about 4h30, then it stops cleanly,
+# keeps everything already collected, and uploads it to Google Sheets.
+SCRAPE_TIME_BUDGET_SECONDS = 4.5 * 60 * 60
+RUN_DEADLINE = 0
+
 EXTERNAL_SEARCH_RESULTS=20
 DETAIL_WORKERS=10
 DETAIL_TIMEOUT=18
@@ -94,6 +97,23 @@ WEBHOOK_BATCH_SIZE = 250
 WEBHOOK_RETRY_DELAYS = (45, 90, 150)
 SEARCH_DELAY = (0.45, 1.0)
 DETAIL_DELAY = (0.25, 0.65)
+
+def start_scrape_clock():
+    """Start the single time budget shared by collection and detail parsing."""
+    global RUN_DEADLINE
+    RUN_DEADLINE = time.monotonic() + SCRAPE_TIME_BUDGET_SECONDS
+    print(f"[*] Temps de scraping autorisé: {SCRAPE_TIME_BUDGET_SECONDS / 3600:.1f} h")
+
+
+def scrape_time_exhausted():
+    return bool(RUN_DEADLINE) and time.monotonic() >= RUN_DEADLINE
+
+
+def scrape_time_remaining():
+    if not RUN_DEADLINE:
+        return float("inf")
+    return max(0.0, RUN_DEADLINE - time.monotonic())
+
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36",
@@ -309,6 +329,9 @@ def _collect_external_links():
     session=make_session(); found=[]; seen=set(); queries=_source_search_queries()
     print(f"[*] Multi-source search: {len(queries)} source/region/role queries.")
     for n,(rn,rol,dom,q) in enumerate(queries,1):
+        if scrape_time_exhausted():
+            print("[!] Temps de scraping atteint pendant la recherche multi-source.")
+            break
         try: results=_bing_search(session,q)
         except requests.RequestException as exc:
             print(f"[!] Source search échouée ({dom} / {rn} / {rol}): {exc}"); continue
@@ -318,32 +341,35 @@ def _collect_external_links():
             if not host or not (host==base_domain or host.endswith("."+base_domain)): continue
             if url in seen: continue
             seen.add(url); found.append({"url":url,"source":dom,"region_query":rn,"role_query":rol,"search_title":title,"search_snippet":snippet}); added+=1
-            if len(found)>=MAX_DETAIL_PAGES: break
         if added: print(f"[+] SOURCE {n}/{len(queries)} | {dom} | {rn} | {rol} | +{added} (total {len(found)})")
         if n%25==0: print(f"[*] Source search progress {n}/{len(queries)} | {len(found)} unique links")
         time.sleep(random.uniform(*SEARCH_DELAY))
-        if len(found)>=MAX_DETAIL_PAGES: break
     return found
 
 def collect_links():
     session=make_session(BASE_URL+"/jobsuche/"); links=[]; seen=set()
     for query in SEARCH_QUERIES:
-        if len(links)>=MAX_DETAIL_PAGES: break
-        print(f"[+] BA Ausbildung Recherche: {query}"); empty_pages=0
-        for page in range(1,MAX_SEARCH_PAGES_PER_QUERY+1):
+        if scrape_time_exhausted():
+            print("[!] Temps de scraping atteint pendant la collecte BA.")
+            break
+        print(f"[+] BA Ausbildung Recherche: {query}"); empty_pages=0; page=1
+        while not scrape_time_exhausted():
             try: batch=api_search_page(session,query,page)
             except requests.RequestException as exc:
-                print(f"[!] BA API recherche échouée {query} page {page}: {exc}"); continue
+                print(f"[!] BA API recherche échouée {query} page {page}: {exc}"); page += 1; continue
             new_count=0
             for link in batch:
                 if link not in seen: seen.add(link); links.append(link); new_count+=1
-                if len(links)>=MAX_DETAIL_PAGES: break
             print(f"    page {page}: {new_count} nouvelles offres (total BA {len(links)})")
             empty_pages=empty_pages+1 if (not batch or new_count==0) else 0
-            if empty_pages>=2 or len(links)>=MAX_DETAIL_PAGES: break
+            if empty_pages>=2:
+                break
+            page += 1
             time.sleep(random.uniform(*SEARCH_DELAY))
-    for url in _collect_external_links():
-        if url not in seen: seen.add(url); links.append(url)
+    if not scrape_time_exhausted():
+        for item in _collect_external_links():
+            url=item["url"]
+            if url not in seen: seen.add(url); links.append(url)
     if not links: raise RuntimeError("Aucune offre trouvée sur les sources Ausbildung demandées.")
     print(f"[*] Total liens uniques collectés (BA + portails/secteurs): {len(links)}")
     return links
@@ -806,20 +832,41 @@ def parse_detail(link):
         time.sleep(random.uniform(*DETAIL_DELAY))
 
 def scrape_details(links):
+    """Parse as many offer pages as possible until the shared time budget ends."""
     jobs = []
-    with ThreadPoolExecutor(max_workers=DETAIL_WORKERS) as executor:
-        futures = {executor.submit(parse_detail, link): link for link in links}
-        for n, future in enumerate(as_completed(futures), start=1):
-            job = future.result()
-            if job:
-                jobs.append(job)
-                if job.get("emails_rh"):
-                    print(f"[+] email BA: {job['emails_rh']} | {job['entreprise']}")
-            if n % 50 == 0:
-                count = sum(1 for x in jobs if x.get("emails_rh"))
-                print(f"[*] détails traités: {n}/{len(links)} | offres: {len(jobs)} | avec email: {count}")
+    executor = ThreadPoolExecutor(max_workers=DETAIL_WORKERS)
+    futures = {executor.submit(parse_detail, link): link for link in links}
+    pending = set(futures)
+    processed = 0
+    try:
+        while pending and not scrape_time_exhausted():
+            wait_timeout = min(5.0, scrape_time_remaining())
+            done, pending = wait(pending, timeout=wait_timeout, return_when=FIRST_COMPLETED)
+            if not done:
+                continue
+            for future in done:
+                processed += 1
+                try:
+                    job = future.result()
+                except Exception as exc:
+                    print(f"[!] détail erreur: {exc}")
+                    continue
+                if job:
+                    jobs.append(job)
+                    if job.get("emails_rh"):
+                        print(f"[+] email offre: {job['emails_rh']} | {job['entreprise']}")
+                if processed % 50 == 0:
+                    count = sum(1 for x in jobs if x.get("emails_rh"))
+                    print(f"[*] détails traités: {processed}/{len(links)} | offres: {len(jobs)} | avec email offre: {count}")
+    finally:
+        for future in pending:
+            future.cancel()
+        executor.shutdown(wait=False, cancel_futures=True)
+
     jobs = list({job["id"]: job for job in jobs}.values())
-    print(f"[*] Offres finales: {len(jobs)} | avec email avant deep search: {sum(1 for x in jobs if x.get('emails_rh'))}")
+    print(f"[*] Offres finales: {len(jobs)} | avec email présent sur l'offre: {sum(1 for x in jobs if x.get('emails_rh'))}")
+    if scrape_time_exhausted():
+        print("[OK] Budget temps atteint: conservation de toutes les offres déjà récupérées.")
     return jobs
 
 
@@ -1028,48 +1075,13 @@ def search_company_web(company, location=""):
 
 
 def enrich_missing_emails(jobs):
-    if not DEEP_SEARCH:
-        return jobs
+    """Legacy in-memory enrichment.
 
-    # One deep-search task per unique company. All its offers receive the result.
-    groups = {}
-    for job in jobs:
-        if job.get("emails_rh"):
-            continue
-        company = clean(job.get("entreprise"))
-        if not company or company in {"À vérifier", "Entreprise non indiquée"}:
-            continue
-        key = normalize_company(company)
-        if key not in groups:
-            groups[key] = {"company": company, "location": job.get("lieu", ""), "jobs": []}
-        groups[key]["jobs"].append(job)
-
-    groups = list(groups.values())[:DEEP_SEARCH_MAX_COMPANIES]
-    print(f"[*] Deep search: {len(groups)} entreprises UNIQUES à vérifier (déduplication activée).")
-    found, sites = 0, 0
-
-    with ThreadPoolExecutor(max_workers=DEEP_SEARCH_WORKERS) as executor:
-        future_map = {executor.submit(search_company_web, g["company"], g["location"]): g for g in groups}
-        for n, future in enumerate(as_completed(future_map), start=1):
-            group = future_map[future]
-            try:
-                email, site = future.result()
-            except Exception as exc:
-                print(f"[!] deep search erreur {group['company']}: {exc}")
-                email, site = "", ""
-            if site:
-                sites += 1
-                for job in group["jobs"]:
-                    job["site_entreprise"] = site
-            if email:
-                found += 1
-                for job in group["jobs"]:
-                    job["emails_rh"] = email
-                print(f"[+] DEEP EMAIL {found}: {email} | {group['company']} | {site} | offres liées: {len(group['jobs'])}")
-            if n % 25 == 0 or n == len(groups):
-                print(f"[*] deep search: {n}/{len(groups)} | sites vérifiés: {sites} | nouveaux emails: {found}")
-
-    print(f"[OK] Deep search terminé: +{found} emails publics vérifiés | {sites} sites officiels vérifiés.")
+    The production workflow now performs this step in email_enrichment.py after
+    the offers are already in Sheets. That workflow groups rows by normalized
+    company, so the same company is searched once and the verified result is
+    copied to every matching offer.
+    """
     return jobs
 
 
@@ -1168,9 +1180,9 @@ def update_sheet(jobs):
 
 def main():
     print("=" * 72)
-    print("AUSBILDUNG KAUFMANN/Kauffrau — DAILY SCRAPER")
-    print("SOURCE: Bundesagentur für Arbeit — SUCHBEREICH=AUSBILDUNG")
-    print(f"Objectif: {TARGET_OFFERS}+ offres candidates")
+    print("AUSBILDUNG — 6 TARGET-AUSBILDUNGEN / TIME-BUDGET SCRAPER")
+    print("SOURCE: Bundesagentur für Arbeit + portails/secteurs Ausbildung")
+    print(f"Objectif: scraper sans plafond d'offres, pendant ~{SCRAPE_TIME_BUDGET_SECONDS / 3600:.1f} h")
     print("=" * 72)
 
     links = collect_links()
