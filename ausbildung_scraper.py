@@ -1010,27 +1010,9 @@ def main():
     links = collect_links()
     jobs = scrape_details(links)
 
-    # Keep Kaufmann/Kauffrau roles matching the target profile.
-    # Exclude warehouse-only Fachkraft roles; keep commercial/logistics Kaufmann roles.
-    TARGET_ROLE_TERMS = (
-        "groß- und außenhandelsmanagement", "großhandel", "außenhandel", "aussenhandel",
-        "export", "import", "spedition", "logistikdienstleistung", "disposition",
-        "büromanagement", "e-commerce", "ecommerce", "einzelhandel", "verkäufer", "verkaufer",
-        "industriekaufmann", "industriekauffrau", "tourismus", "reiseverkehr"
-    )
-    filtered = []
-    for j in jobs:
-        text = (clean(j.get("intitule", "")) + " " + clean(j.get("role_cible", ""))).lower()
-        if "fachkraft für lagerlogistik" in text or "fachkraft lagerlogistik" in text:
-            continue
-        if any(term in text for term in TARGET_ROLE_TERMS):
-            filtered.append(j)
-    jobs = filtered
-    jobs.sort(key=job_sort_key, reverse=True)
-    print("[OK] Priorités P1: Groß-/Außenhandel, Spedition/Logistik, Industriekaufmann")
-    print("[OK] Priorités P2: E-Commerce, Büromanagement, Tourismus, Einzelhandel")
-    print("[OK] P3: Verkäufer als Backup")
-    print("[OK] Innerhalb jeder Priorität: neueste Veröffentlichung zuerst")
+    # Classify every retained offer with the same P1/P2/P3 strategy
+    # used by daily_runner.py.
+    jobs = prioritize_jobs(jobs)
     # 1. Offers go to Sheets immediately after offer scraping.
     if jobs:
         send_to_sheet(jobs)
