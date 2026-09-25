@@ -414,21 +414,28 @@ def _iter_external_links():
 
 
 def iter_collected_links():
-    """Interleave BA and portal discovery so one source cannot consume the whole run."""
+    """Interleave BA and portal discovery with one global URL dedupe set."""
     ba = _iter_ba_links()
     external = _iter_external_links()
     ba_done = external_done = False
+    seen = set()
 
     while not scrape_time_exhausted() and not (ba_done and external_done):
         if not ba_done:
             try:
-                yield next(ba)
+                link = next(ba)
+                if link not in seen:
+                    seen.add(link)
+                    yield link
             except StopIteration:
                 ba_done = True
 
         if not external_done and not scrape_time_exhausted():
             try:
-                yield next(external)
+                link = next(external)
+                if link not in seen:
+                    seen.add(link)
+                    yield link
             except StopIteration:
                 external_done = True
 
