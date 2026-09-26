@@ -894,7 +894,7 @@ function traiterAusbildungCandidatures() {
       const intitule = String(row[COL.INTITULE] || "").trim();
       const entreprise = String(row[COL.ENTREPRISE] || "").trim() || "Unternehmen Deutschland";
       const emailCible = extractFirstEmail(row[COL.EMAILS_RH] || "");
-      const dateEnvoi = row[COL.DATE_ENVOI] ? new Date(row[COL.DATE_ENVOI]) : null;
+      const dateEnvoi = row[COL.DATE_ENVOI] ? new Date(row[COL.DATE_CANDIDATURE]) : null;
       const rowNum = i + 1;
 
       if (!emailCible || !isValidEmail(emailCible)) {
@@ -942,7 +942,7 @@ function traiterAusbildungCandidatures() {
           });
 
           sheet.getRange(rowNum, COL.STATUT + 1).setValue("CANDIDATURE_ENVOYEE");
-          sheet.getRange(rowNum, COL.DATE_ENVOI + 1).setValue(new Date());
+          sheet.getRange(rowNum, COL.DATE_CANDIDATURE + 1).setValue(new Date());
 
           compteur++;
           emailsEnvoyesCetteExecution.add(emailCible);
