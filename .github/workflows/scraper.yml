@@ -30,10 +30,12 @@ jobs:
           python-version: '3.11'
           check-latest: false
 
-      - name: Install dependencies
+      - name: Install OCR dependencies
         run: |
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr tesseract-ocr-deu
           python -m pip install --upgrade pip
-          pip install requests beautifulsoup4 lxml
+          pip install requests beautifulsoup4 lxml pillow pytesseract
 
       - name: Validate Python syntax and imports
         env:
