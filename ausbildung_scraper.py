@@ -663,6 +663,133 @@ def _detect_role_title(title,text):
     if "industriekauffrau" in t or "industriekaufmann" in t: return "Industriekauffrau"
     return ""
 
+
+def employer_name_ok(value):
+    value = clean(value)
+    low = value.lower()
+    if not value or len(value) > 160 or "@" in value or low in {
+        "unternehmen", "arbeitgeber", "firma", "betrieb", "entreprise non indiquée",
+        "à vérifier", "unbekannt", "nicht angegeben", "agentur für arbeit",
+        "bundesagentur für arbeit"
+    }:
+        return ""
+    if any(x in low for x in ("arbeitsagentur.de","azubiyo.de","ausbildung.de","indeed.com","stepstone.de","linkedin.com","xing.com")):
+        return ""
+    return re.sub(r"^(arbeitgeber|unternehmen|firma|betrieb)\s*:?\s*", "", value, flags=re.I).strip(" -|:;")
+
+def employer_from_json(data):
+    if isinstance(data, dict):
+        for key, value in data.items():
+            k = str(key).lower().replace("_","")
+            if any(x in k for x in ("hiringorganization","arbeitgeber","employer","company","unternehmen","firma")):
+                if isinstance(value, dict):
+                    value = value.get("name") or value.get("legalName") or value.get("companyName")
+                candidate = employer_name_ok(value)
+                if candidate:
+                    return candidate
+            candidate = employer_from_json(value)
+            if candidate:
+                return candidate
+    elif isinstance(data, list):
+        for value in data:
+            candidate = employer_from_json(value)
+            if candidate:
+                return candidate
+    return ""
+
+def extract_employer_name(soup, text=""):
+    for script in soup.find_all("script", type="application/ld+json"):
+        try:
+            candidate = employer_from_json(json.loads(script.string or script.get_text() or "{}"))
+            if candidate:
+                return candidate
+        except Exception:
+            pass
+
+    for tag in soup.find_all(True):
+        for attr in ("data-company","data-employer","data-employer-name","data-company-name","aria-label","title","alt","content"):
+            candidate = employer_name_ok(tag.get(attr))
+            if candidate and any(x in attr.lower() for x in ("company","employer","name")):
+                return candidate
+
+    patterns = (
+        r"(?:Arbeitgeber|Ausbildungsbetrieb|Ausbildungsunternehmen|Unternehmen|Firma|Betrieb)\s*:?\s*([^|]{2,160}?)(?=\s+(?:Arbeitsort|Ausbildungsbeginn|Beginn|Aufgaben|Profil|Angebotsart)\b|$)",
+        r"\bbei\s+([A-ZÄÖÜ0-9][^|]{2,160}?)(?=\s+(?:in|für|zum|zur|ab|als)\b|[,.]|$)",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text or "", re.I)
+        if match:
+            candidate = employer_name_ok(match.group(1))
+            if candidate:
+                return candidate
+    return ""
+
+def recover_employer_name(url="", title="", location="", email="", soup=None, text="", details=None):
+    candidate = employer_from_json(details) if details else ""
+    if not candidate and soup is not None:
+        candidate = extract_employer_name(soup, text)
+    if candidate:
+        return candidate
+
+    # Company email domains and direct employer pages are useful identity clues.
+    if email:
+        domain = email.split("@")[-1].lower()
+        if domain not in {"gmail.com","outlook.com","hotmail.com","yahoo.com","gmx.de","web.de","icloud.com"}:
+            candidate = employer_name_ok(domain.split(".")[0].replace("-"," ").replace("_"," ").title())
+            if candidate:
+                return candidate
+
+    if url and not domain_is_bad(url):
+        try:
+            r = requests.get(url, headers={"User-Agent": random.choice(USER_AGENTS)}, timeout=DEEP_SEARCH_TIMEOUT)
+            if r.ok:
+                page = BeautifulSoup(r.text, "html.parser")
+                candidate = extract_employer_name(page, clean(page.get_text(" ", strip=True)))
+                if not candidate:
+                    meta = page.select_one('meta[property="og:site_name"]')
+                    candidate = employer_name_ok(meta.get("content") if meta else "")
+                if candidate:
+                    return candidate
+        except requests.RequestException:
+            pass
+
+    # Final identity recovery: search the exact offer, never accept a job-board name.
+    if title:
+        query = '"' + clean(title) + '" ' + clean(location) + " Ausbildung Arbeitgeber"
+        try:
+            session = make_session()
+            for href, result_title, snippet in search_engine_bing(session, query)[:12]:
+                if domain_is_bad(href):
+                    continue
+                host = host_of(href)
+                if host:
+                    candidate = employer_name_ok(result_title)
+                    if candidate and not any(x in candidate.lower() for x in ("ausbildung","stellenangebot","jobsuche")):
+                        return candidate
+                    parts = host.split(".")
+                    if parts and parts[0] not in {"www","jobs","karriere","career"}:
+                        candidate = employer_name_ok(parts[0].replace("-"," ").title())
+                        if candidate:
+                            return candidate
+        except requests.RequestException:
+            pass
+    return ""
+
+def ensure_employer_name(job, url="", soup=None, text="", details=None):
+    candidate = employer_name_ok(job.get("entreprise",""))
+    if not candidate:
+        candidate = recover_employer_name(
+            url=url, title=job.get("intitule",""), location=job.get("lieu",""),
+            email=job.get("emails_rh",""), soup=soup, text=text, details=details
+        )
+    job["entreprise"] = candidate or "Employeur à identifier"
+    if candidate:
+        print(f"[EMPLOYER] {job.get('intitule','')} -> {candidate}")
+    else:
+        print(f"[WARN] Employeur non récupéré: {job.get('intitule','')}")
+    return job["entreprise"]
+
+
 def parse_external_detail(link):
     session=make_session(link); host=host_of(link)
     base={"date_detection":time.strftime("%Y-%m-%d %H:%M"),"date_offre":"","statut":"NOUVEAU","role_cible":"","intitule":"Ausbildung","entreprise":"Entreprise non indiquée","lieu":"Deutschland","emails_rh":"","site_entreprise":"","source":host,"lien":link,"id":"src_"+hashlib.sha256(link.encode()).hexdigest()[:20],"description":""}
@@ -688,9 +815,9 @@ def parse_external_detail(link):
                     break
             except Exception: pass
         if not company:
-            for pat in (r"(?:Arbeitgeber|Unternehmen|Firma)\s*:?\s*(.+?)(?:\s+Arbeitsort|\s+Ausbildungsbeginn|\s+Aufgaben|$)",r"bei\s+(.+?)(?:\s+in\s+|\s+für\s+|\s+zum\s+|\s+ab\s+|$)"):
-                m=re.search(pat,text,re.I)
-                if m: company=clean(m.group(1)); break
+            company = extract_employer_name(soup, text)
+        if not company:
+            company = recover_employer_name(url=link, title=title, location=location, email=email, soup=soup, text=text)
         if not location:
             for pat in (r"(?:Arbeitsort|Ort|Standort)\s*:?\s*(.+?)(?:\s+Anstellungsart|\s+Ausbildungsbeginn|\s+Beginn|$)",r"\b(\d{5})\s+([A-ZÄÖÜ][A-Za-zÄÖÜäöüß\-]+(?:\s+[A-ZÄÖÜ][A-Za-zÄÖÜäöüß\-]+){0,2})\b"):
                 m=re.search(pat,text,re.I)
@@ -698,7 +825,8 @@ def parse_external_detail(link):
         if not published: published=extract_offer_date(text)
         role=_detect_role_title(title,text)
         if not role: return None
-        base.update({"intitule":title or role,"entreprise":company or "Entreprise non indiquée","lieu":location or "Deutschland","emails_rh":email,"role_cible":role,"date_offre":published,"description":description or text[:8000]})
+        base.update({"intitule":title or role,"entreprise":company or "","lieu":location or "Deutschland","emails_rh":email,"role_cible":role,"date_offre":published,"description":description or text[:8000]})
+        ensure_employer_name(base, url=link, soup=soup, text=text)
         return base
     except requests.RequestException as exc:
         print(f"[!] source detail inaccessible: {link} -> {exc}"); return None
@@ -719,7 +847,7 @@ def parse_detail(link):
             "statut": "NOUVEAU",
             "role_cible": "Ausbildung - priorisierte Logistik / Handel / Einzelhandel",
             "intitule": "Ausbildung Kaufmann/Kauffrau",
-            "entreprise": "À vérifier",
+            "entreprise": "",
             "lieu": "Deutschland",
             "emails_rh": "",
             "site_entreprise": "",
@@ -769,7 +897,7 @@ def parse_detail(link):
                 or details.get("beruf")
                 or base["intitule"]
             )
-            company = clean(details.get("arbeitgeber") or "Entreprise non indiquée")
+            company = clean(details.get("arbeitgeber") or "") or employer_from_json(details)
 
             locations = details.get("arbeitsorte") or []
             location = "Deutschland"
@@ -826,6 +954,7 @@ def parse_detail(link):
                 "description": description,
                 "id": "aa_" + clean(details.get("refnr") or details.get("referenznummer") or refnr),
             })
+            ensure_employer_name(base, url=external_url, text=description, details=details)
             return base
 
         except requests.RequestException as exc:
@@ -847,7 +976,7 @@ def parse_detail(link):
         "date_detection": time.strftime("%Y-%m-%d %H:%M"),
         "date_offre": "",
         "statut": "NOUVEAU", "role_cible": "Ausbildung - priorisierte Logistik / Handel / Einzelhandel",
-        "intitule": "Ausbildung Kaufmann/Kauffrau", "entreprise": "À vérifier",
+        "intitule": "Ausbildung Kaufmann/Kauffrau", "entreprise": "",
         "lieu": "Deutschland", "emails_rh": "", "site_entreprise": "",
         "source": "Agentur für Arbeit - Ausbildung", "lien": link, "id": "aa_" + source_id,
     }
@@ -860,14 +989,9 @@ def parse_detail(link):
         title = clean(h1.get_text(" ", strip=True)) if h1 else base["intitule"]
         title = re.sub(r"^Stellenangebot:\s*", "", title, flags=re.I)
         email = extract_email(soup)
-        company = ""
-        for pattern in [
-            r"bei\s+(.+?)(?:\s+Das Wichtigste|\s+Aufgaben|\s+Profil|\s+Arbeitsort|$)",
-            r"Arbeitgeber\s*:?[ ]+(.+?)(?:\s+Arbeitsort|\s+Angebotsart|$)",
-        ]:
-            m = re.search(pattern, text, re.I)
-            if m:
-                company = clean(m.group(1)); break
+        company = extract_employer_name(soup, text)
+        if not company:
+            company = recover_employer_name(url=link, title=title, email=email, soup=soup, text=text)
         location = "Deutschland"
         for pattern in [
             r"Arbeitsort\s*:?[ ]+(.+?)(?:\s+Anstellungsart|\s+Angebotsart|\s+Beginn|$)",
@@ -889,12 +1013,13 @@ def parse_detail(link):
             role = "Autre / vérifier"
         base.update({
             "intitule": title,
-            "entreprise": company or "Entreprise non indiquée",
+            "entreprise": company or "",
             "lieu": location,
             "emails_rh": email,
             "role_cible": role,
             "date_offre": extract_offer_date(text),
         })
+        ensure_employer_name(base, url=link, soup=soup, text=text)
         return base
     except requests.RequestException as exc:
         print(f"[!] détail inaccessible: {link} -> {exc}")
