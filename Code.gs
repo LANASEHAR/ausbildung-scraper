@@ -450,8 +450,32 @@ function detecterSpecialite(intitule,roleCible){
   if(t.includes("industriekauf")) return "industrie";
   return "";
 }
-function getTitreAusbildung(specialite){
-  return ({hotelfachfrau:"Hotelfachfrau / Hotelkauffrau",systemgastronomie:"Fachfrau für Systemgastronomie",einzelhandel:"Kauffrau im Einzelhandel",spedition:"Kauffrau für Spedition und Logistikdienstleistung",handel:"Kauffrau im Groß- und Außenhandelsmanagement",industrie:"Industriekauffrau"})[specialite]||"Ausbildungsplatz";
+function getTitreAusbildung(
+  specialite
+) {
+
+  return ({
+
+    hotelfachfrau:
+      "Hotelfachfrau",
+
+    systemgastronomie:
+      "Fachfrau für Systemgastronomie",
+
+    einzelhandel:
+      "Kauffrau im Einzelhandel",
+
+    spedition:
+      "Kauffrau für Spedition und Logistikdienstleistung",
+
+    handel:
+      "Kauffrau im Groß- und Außenhandelsmanagement",
+
+    industrie:
+      "Industriekauffrau"
+
+  })[specialite] ||
+  "Ausbildungsplatz";
 }
 
 function getCV(intitule,roleCible){
@@ -518,58 +542,156 @@ function getSignatureHTML() {
  * Génère le corps HTML de l'email de candidature initiale.
  * Adapté par spécialité avec des formulations professionnelles en allemand.
  */
-function genererEmailCandidature(entreprise, intitule, roleCible) {
-  const specialite = detecterSpecialite(intitule, roleCible);
-  const titrePoste = getTitreAusbildung(specialite);
-  const entrepriseConnue = entreprise &&
+function genererEmailCandidature(
+  entreprise,
+  intitule,
+  roleCible
+) {
+
+  const specialite =
+    detecterSpecialite(
+      intitule,
+      roleCible
+    );
+
+
+  const titrePoste =
+    getTitreAusbildung(
+      specialite
+    );
+
+
+  /*
+   * Si le nom de l'entreprise est connu,
+   * on le mentionne naturellement.
+   *
+   * Si l'entreprise est absente/inconnue,
+   * aucune mention artificielle n'est ajoutée.
+   */
+  const entrepriseConnue =
+    entreprise &&
     entreprise.trim() &&
-    entreprise.trim() !== "Unternehmen Deutschland";
+    entreprise.trim() !==
+      "Unternehmen Deutschland";
 
-  // Le nom de l'entreprise n'est utilisé que lorsqu'il a réellement été trouvé.
-  const introduction = entrepriseConnue
-    ? `mit großem Interesse bewerbe ich mich um den Ausbildungsplatz als <strong>${titrePoste}</strong> bei ${entreprise.trim()}.`
-    : `mit großem Interesse bewerbe ich mich um einen Ausbildungsplatz als <strong>${titrePoste}</strong>.`;
 
-  const motivation = {
+  const introduction =
+    entrepriseConnue
+
+      ?
+
+      `mit großem Interesse bewerbe ich mich um einen Ausbildungsplatz als <strong>${titrePoste}</strong> bei ${entreprise.trim()}.`
+
+      :
+
+      `mit großem Interesse bewerbe ich mich um einen Ausbildungsplatz als <strong>${titrePoste}</strong>.`;
+
+
+  /*
+   * EMAILS COURTS ET SPÉCIFIQUES À CHAQUE AUSBILDUNG
+   *
+   * Chaque version utilise les éléments réellement
+   * pertinents du CV correspondant.
+   */
+  const motivation = ({
+
+    /* =====================================================
+       HOTELFACHFRAU
+       ===================================================== */
+
     hotelfachfrau:
-      `Durch meine bisherige Tätigkeit bei HBX Group / Hotelbeds kenne ich die Hotellerie bereits aus der internationalen B2B-Perspektive. Ich habe Geschäftskunden betreut, bei Fragen und Problemen Lösungen gefunden und dabei gelernt, auch in einem internationalen Umfeld zuverlässig und serviceorientiert zu arbeiten. Diese Erfahrung möchte ich nun mit einer fundierten Ausbildung im deutschen Hotelgewerbe verbinden.`,
+
+      `Die Hotellerie ist mir bereits aus meiner beruflichen Erfahrung vertraut. Bei HBX Group / Hotelbeds betreute ich ein internationales B2B-Kundenportfolio im Bereich Hotellerie und Travel im Nahen Osten und arbeitete täglich mit Geschäftspartnern auf Arabisch, Französisch und Englisch. Insgesamt bringe ich über fünf Jahre Erfahrung in Kundenbetreuung, Vertrieb und kaufmännischen Abläufen mit. Diese Erfahrung möchte ich nun mit einer Ausbildung in Deutschland und einem anerkannten IHK-Abschluss weiterentwickeln.`,
+
+
+    /* =====================================================
+       SYSTEMGASTRONOMIE
+       ===================================================== */
 
     systemgastronomie:
-      `Der direkte Kontakt mit Menschen und die Arbeit im Service liegen mir besonders. Bei Umanis Intermediation (CGI) wurde ich für meine Verkaufsleistung als Top-Verkäuferin ausgezeichnet, und bei Total Call habe ich Kunden sowohl technisch als auch kaufmännisch beraten. Diese Erfahrung möchte ich nun in einer Ausbildung zur Fachfrau für Systemgastronomie weiterentwickeln und um die praktischen Standards der deutschen Gastronomie ergänzen.`,
+
+      `Auch wenn mein bisheriger beruflicher Weg nicht direkt aus der Gastronomie kommt, bringe ich über fünf Jahre Erfahrung im Kundenservice, Vertrieb und in strukturierten Arbeitsabläufen mit. Als Top-Verkäuferin konnte ich bereits meine Stärke in Kundenkommunikation und Beratung unter Beweis stellen. Diese Erfahrung möchte ich nun in die Systemgastronomie einbringen und die professionellen Abläufe in Deutschland von Grund auf erlernen.`,
+
+
+    /* =====================================================
+       EINZELHANDEL
+       ===================================================== */
 
     einzelhandel:
-      `Ich bringe mehr als fünf Jahre Erfahrung im Vertrieb und in der Kundenberatung mit. Bei Umanis Intermediation (CGI) wurde ich als Top-Verkäuferin ausgezeichnet. In meiner aktuellen Tätigkeit gehören außerdem Bestandsüberwachung und Auftragsabwicklung zu meinen Aufgaben. Die Ausbildung sehe ich deshalb als sinnvolle Möglichkeit, meine bisherige Berufserfahrung mit einer anerkannten deutschen Qualifikation im Einzelhandel zu verbinden.`,
+
+      `Kundenberatung und Verkauf begleiten mich seit mehreren Jahren. In über fünf Jahren Berufserfahrung habe ich im B2B- und B2C-Vertrieb sowie im Kundenservice gearbeitet und wurde bei Umanis Intermediation aufgrund meiner Beratungsqualität und Abschlussstärke als Top-Verkäuferin ausgezeichnet. Heute gehören außerdem Bestandsüberwachung, Auftragsabwicklung und kaufmännische Aufgaben zu meinem Arbeitsalltag. Diese Erfahrung möchte ich nun gezielt mit einer deutschen Ausbildung und einem anerkannten IHK-Abschluss verbinden.`,
+
+
+    /* =====================================================
+       SPEDITION / LOGISTIK
+       ===================================================== */
 
     spedition:
-      `Logistik und Organisation gehören bereits zu meinem beruflichen Alltag. Bei Helpdesk ForYou koordinierte ich die Einsatzplanung von über 100 Fahrern und Mitarbeitenden sowie Touren, Termine und Wartungen. Seit April 2026 arbeite ich außerdem mit Beschaffung, Logistik, Bestandsüberwachung, Auftragsabwicklung und Lieferantenabstimmung. Diese praktische Erfahrung möchte ich nun gezielt durch eine Ausbildung zur Kauffrau für Spedition und Logistikdienstleistung in Deutschland vertiefen.`,
+
+      `Logistik und Koordination sind mir bereits aus meiner Berufserfahrung vertraut. Bei Helpdesk ForYou koordinierte ich die Einsatzplanung von über 100 Fahrern und Mitarbeitenden und verfolgte Touren, Termine und Wartungen. Heute arbeite ich bei Atmlo Chem / EasyChemicalStock mit Beschaffung, Logistik, Bestandsüberwachung, Auftragsabwicklung und Lieferanten. Insgesamt bringe ich über fünf Jahre kaufmännische Berufserfahrung mit, die ich nun gezielt durch eine Ausbildung und einen anerkannten IHK-Abschluss erweitern möchte.`,
+
+
+    /* =====================================================
+       GROSS- UND AUSSENHANDEL
+       ===================================================== */
 
     handel:
-      `In meiner aktuellen Tätigkeit bei Atmlo Chem / EasyChemicalStock übernehme ich Aufgaben in der Beschaffung, Lieferantenabstimmung, Bestandsüberwachung und Auftragsabwicklung und arbeite dabei mit Excel und dem ERP-System Sage. Zuvor habe ich bei HBX Group / Hotelbeds internationale B2B-Geschäftspartner betreut. Die Ausbildung im Groß- und Außenhandelsmanagement würde mir die Möglichkeit geben, diese praktische Erfahrung mit einer anerkannten deutschen kaufmännischen Qualifikation zu verbinden.`,
+
+      `Ich bringe über fünf Jahre Berufserfahrung in kaufmännischen Bereichen, Kundenbetreuung und Vertrieb mit. In meiner aktuellen Tätigkeit arbeite ich unter anderem mit Beschaffung, Lieferanten, Bestandsüberwachung und Auftragsabwicklung sowie mit Excel und Sage. Zuvor betreute ich bei HBX Group / Hotelbeds internationale B2B-Geschäftspartner. Diese Erfahrung möchte ich nun mit einer fundierten Ausbildung und einem anerkannten IHK-Abschluss in Deutschland verbinden.`,
+
+
+    /* =====================================================
+       INDUSTRIE
+       ===================================================== */
 
     industrie:
-      `Meine aktuelle Tätigkeit bei Atmlo Chem / EasyChemicalStock umfasst Beschaffung, Bestandsüberwachung, Auftragsabwicklung, Rechnungen, Excel-Reporting und die Arbeit mit dem ERP-System Sage. Dazu kommen mehrere Jahre Erfahrung im internationalen B2B-Kundenmanagement und Vertrieb. Eine Ausbildung zur Industriekauffrau ist für mich daher eine logische Weiterentwicklung, um meine bisherigen Kenntnisse systematisch zu erweitern und gleichzeitig eine anerkannte deutsche Qualifikation zu erwerben.`
-  }[specialite] || `Meine bisherige Berufserfahrung verbindet Kundenkontakt, kaufmännische Aufgaben und strukturierte Arbeitsprozesse. Diese Erfahrung möchte ich nun durch eine fundierte Ausbildung in Deutschland gezielt erweitern.`;
+
+      `Durch über fünf Jahre Berufserfahrung bringe ich bereits praktische Kenntnisse in kaufmännischer Organisation, Beschaffung, Auftragsabwicklung und Kundenbetreuung mit. Aktuell arbeite ich mit Lieferanten, Beständen, Rechnungen, Excel und dem ERP-System Sage. Ich möchte diese Praxiserfahrung nun mit den kaufmännischen Prozessen eines deutschen Unternehmens verbinden und dabei einen anerkannten IHK-Abschluss erwerben.`
+
+  })[specialite] ||
+
+    `Ich bringe über fünf Jahre Berufserfahrung in kaufmännischen Bereichen, Kundenbetreuung und strukturierten Arbeitsprozessen mit. Diese Erfahrung möchte ich nun gezielt durch eine fundierte Ausbildung in Deutschland erweitern.`;
+
+
+  /* =======================================================
+     CORPS DU MAIL
+     ======================================================= */
 
   const body = `
+
 <p>Sehr geehrte Damen und Herren,</p>
 
-<p>${introduction}</p>
+<p>
+${introduction}
+</p>
 
-<p>${motivation}</p>
+<p>
+${motivation}
+</p>
 
-<p>Ich habe in Marokko ein <strong>DEUG (Diplôme d'Études Universitaires Générales) in Wirtschaft und Management</strong> abgeschlossen, einen zweijährigen Hochschulabschluss (Bac+2). Zusätzlich bringe ich mehr als fünf Jahre praktische Berufserfahrung mit.</p>
+<p>
+Deutsch B1 habe ich abgeschlossen und bereite mich aktuell auf B2 vor.
+Meine vollständigen Bewerbungsunterlagen finden Sie im Anhang.
+</p>
 
-<p>Gerade deshalb ist die Ausbildung in Deutschland für mich eine bewusste und sinnvolle Ergänzung: Ich möchte meine bisherigen akademischen und beruflichen Kenntnisse mit dem deutschen Ausbildungssystem verbinden, die beruflichen Standards in Deutschland direkt in der Praxis lernen und eine <strong>anerkannte IHK-Qualifikation</strong> erwerben. So kann ich meine bisherige Erfahrung einbringen und gleichzeitig eine solide berufliche Grundlage für meinen weiteren Weg in Deutschland schaffen.</p>
+<p>
+Über die Gelegenheit, mich persönlich oder per Videogespräch vorzustellen,
+würde ich mich sehr freuen.
+</p>
 
-<p>Ich spreche Arabisch als Muttersprache, Französisch auf C1-Niveau, Englisch auf C1-Niveau und Deutsch auf B1-Niveau. Meine B2-Vorbereitung läuft aktuell aktiv. Außerdem spreche ich Spanisch auf A2-Niveau.</p>
+<p>
+Mit freundlichen Grüßen
+</p>
 
-<p>Meine Bewerbungsunterlagen finden Sie im Anhang. Über die Gelegenheit, mich kurz persönlich oder per Video vorzustellen, würde ich mich sehr freuen.</p>
-
-<p>Mit freundlichen Grüßen</p>
 ${getSignatureHTML()}
+
 `.trim();
 
-  return { titrePoste, body };
+
+  return {
+    titrePoste,
+    body
+  };
 }
 
 function genererEmailRelance(entreprise, intitule, roleCible) {
