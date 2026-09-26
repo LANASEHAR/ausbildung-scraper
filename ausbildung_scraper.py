@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import io
 import json
 import os
 import random
@@ -10,6 +11,8 @@ from urllib.parse import quote_plus, unquote, urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
+from PIL import Image
+import pytesseract
 
 BASE_URL = "https://www.arbeitsagentur.de"
 SEARCH_URL = BASE_URL + "/jobsuche/suche"
@@ -724,10 +727,78 @@ def extract_employer_name(soup, text=""):
                 return candidate
     return ""
 
+
+def ocr_employer_from_images(soup, page_url):
+    """
+    OCR fallback for employer names shown only inside logos, banners or images.
+    Only image text is treated as a candidate after employer-name validation.
+    """
+    if soup is None or not page_url:
+        return ""
+    image_urls = []
+    seen = set()
+    for img in soup.find_all("img", src=True):
+        src = img.get("src", "").strip()
+        if not src or src.startswith("data:"):
+            continue
+        full = urljoin(page_url, src)
+        if host_of(full) != host_of(page_url):
+            continue
+        marker_text = " ".join(str(img.get(x, "")) for x in
+                               ("alt", "title", "aria-label", "class", "id")).lower()
+        # Prioritize likely logo/header/employer images.
+        priority = any(x in marker_text for x in
+                       ("logo", "arbeitgeber", "unternehmen", "firma", "betrieb", "employer", "company", "header", "banner"))
+        item = (0 if priority else 1, full)
+        if full not in seen:
+            seen.add(full)
+            image_urls.append(item)
+    image_urls.sort(key=lambda x: x[0])
+
+    for _, image_url in image_urls[:10]:
+        try:
+            r = requests.get(
+                image_url,
+                headers={"User-Agent": random.choice(USER_AGENTS), "Accept": "image/*"},
+                timeout=DEEP_SEARCH_TIMEOUT,
+            )
+            if not r.ok or not r.content:
+                continue
+            content_type = r.headers.get("Content-Type", "").lower()
+            if content_type and not content_type.startswith("image/"):
+                continue
+            image = Image.open(io.BytesIO(r.content)).convert("RGB")
+            if image.width < 80 or image.height < 30:
+                continue
+            # Keep OCR fast and avoid giant images consuming the runner.
+            image.thumbnail((1800, 1200))
+            for psm in (6, 11):
+                try:
+                    raw = pytesseract.image_to_string(image, lang="deu+eng", config=f"--psm {psm}")
+                except Exception:
+                    raw = pytesseract.image_to_string(image, config=f"--psm {psm}")
+                for line in raw.splitlines():
+                    candidate = employer_name_ok(line)
+                    if candidate and len(candidate.split()) <= 12:
+                        # Avoid returning generic OCR fragments.
+                        low = candidate.lower()
+                        if not any(x in low for x in (
+                            "ausbildung", "stellenangebot", "bewerbung", "karriere",
+                            "arbeitgeber", "arbeitsagentur", "jobsuche"
+                        )):
+                            print(f"[OCR] Employeur détecté: {candidate}")
+                            return candidate
+        except Exception:
+            continue
+    return ""
+
+
 def recover_employer_name(url="", title="", location="", email="", soup=None, text="", details=None):
     candidate = employer_from_json(details) if details else ""
     if not candidate and soup is not None:
         candidate = extract_employer_name(soup, text)
+    if not candidate and soup is not None and url:
+        candidate = ocr_employer_from_images(soup, url)
     if candidate:
         return candidate
 
