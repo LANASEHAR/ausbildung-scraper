@@ -38,24 +38,30 @@ const CONFIG={
 };
 
 // Colonnes du Google Sheet (0-indexées)
-const COL = {
-  DATE_DETECTION: 0,  // A
-  STATUT:         1,  // B
-  ROLE_CIBLE:     2,  // C
-  INTITULE:       3,  // D
-  ENTREPRISE:     4,  // E
-  LIEU:            5,  // F
-  EMAILS_RH:      6,  // G
-  SOURCE:         7,  // H
-  LIEN:            8,  // I
-  ID:              9,  // J
-  DATE_ENVOI:    10,  // K
-  DATE_RELANCE:  11,  // L
-  DATE_OFFRE:    12,  // M
-  PRIORITE_REGION: 13, // N
-  PRIORITE_AUSBILDUNG: 14, // O
-}
 
+const COL = {
+  DATE_DETECTION:      0,  // A
+  STATUT:              1,  // B
+  ROLE_CIBLE:          2,  // C
+  INTITULE:            3,  // D
+  ENTREPRISE:          4,  // E
+  LIEU:                5,  // F
+  EMAILS_RH:           6,  // G
+  SITE_ENTREPRISE:     7,  // H
+  SOURCE:              8,  // I
+  LIEN:                9,  // J
+  ID:                 10,  // K
+  DATE_CANDIDATURE:   11,  // L
+  DATE_RELANCE:       12,  // M
+  NOMBRE_RELANCES:    13,  // N
+  CV_UTILISE:         14,  // O
+  MESSAGE_ENVOYE:     15,  // P
+  DATE_OFFRE:         16,  // Q
+  PRIORITE_REGION:    17,  // R
+  PRIORITE_AUSBILDUNG:18   // S
+};
+
+const REQUIRED_COLUMNS = 19;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // UTILITAIRES
@@ -185,35 +191,101 @@ function doGet() {
 }
 
 function ensureTrackingColumns(sheet) {
-  const headers = [
-    "Date offre", "Priorité région", "Priorité Ausbildung"
-  ];
 
-  // Add metadata headers only when they are not already present.
-  const lastColumn = Math.max(sheet.getLastColumn(), COL.DATE_RELANCE + 1);
-  if (sheet.getMaxColumns() < COL.PRIORITE_AUSBILDUNG + 1) {
-    sheet.insertColumnsAfter(sheet.getMaxColumns(), COL.PRIORITE_AUSBILDUNG + 1 - sheet.getMaxColumns());
+  if (sheet.getMaxColumns() < REQUIRED_COLUMNS) {
+    sheet.insertColumnsAfter(
+      sheet.getMaxColumns(),
+      REQUIRED_COLUMNS - sheet.getMaxColumns()
+    );
   }
 
-  const headerValues = sheet.getRange(1, 1, 1, COL.PRIORITE_AUSBILDUNG + 1).getValues()[0];
-  if (!headerValues[COL.DATE_OFFRE]) headerValues[COL.DATE_OFFRE] = headers[0];
-  if (!headerValues[COL.PRIORITE_REGION]) headerValues[COL.PRIORITE_REGION] = headers[1];
-  if (!headerValues[COL.PRIORITE_AUSBILDUNG]) headerValues[COL.PRIORITE_AUSBILDUNG] = headers[2];
+  const headers = [
+    "date_detection",
+    "statut",
+    "role_cible",
+    "intitule",
+    "entreprise",
+    "lieu",
+    "emails_rh",
+    "site_entreprise",
+    "source",
+    "lien",
+    "id",
+    "date_candidature",
+    "date_relance",
+    "nombre_relances",
+    "cv_utilise",
+    "message_envoye",
+    "date_offre",
+    "priorite_region",
+    "priorite_ausbildung"
+  ];
 
-  sheet.getRange(1, 1, 1, COL.PRIORITE_AUSBILDUNG + 1).setValues([headerValues]);
+  const headerRange = sheet.getRange(
+    1,
+    1,
+    1,
+    REQUIRED_COLUMNS
+  );
+
+  const currentHeaders = headerRange.getValues()[0];
+
+  let changed = false;
+
+  for (let i = 0; i < REQUIRED_COLUMNS; i++) {
+    if (
+      currentHeaders[i] === "" ||
+      currentHeaders[i] === null ||
+      typeof currentHeaders[i] === "undefined"
+    ) {
+      currentHeaders[i] = headers[i];
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    headerRange.setValues([currentHeaders]);
+  }
 }
 
+
 function sortOffers(sheet) {
+
   const lastRow = sheet.getLastRow();
+
   if (lastRow <= 2) return;
 
-  // Region priority → Ausbildung priority → newest offer date → detection date.
-  sheet.getRange(2, 1, lastRow - 1, COL.PRIORITE_AUSBILDUNG + 1).sort([
-    {column: COL.PRIORITE_REGION + 1, ascending: false},
-    {column: COL.PRIORITE_AUSBILDUNG + 1, ascending: false},
-    {column: COL.DATE_OFFRE + 1, ascending: false},
-    {column: COL.DATE_DETECTION + 1, ascending: false}
-  ]);
+  const numberOfRows = lastRow - 1;
+
+  if (numberOfRows < 1 || REQUIRED_COLUMNS < 1) {
+    return;
+  }
+
+  sheet
+    .getRange(
+      2,
+      1,
+      numberOfRows,
+      REQUIRED_COLUMNS
+    )
+    .sort([
+      {
+        column: COL.PRIORITE_REGION + 1,
+        ascending: false
+      },
+      {
+        column: COL.PRIORITE_AUSBILDUNG + 1,
+        ascending: false
+      },
+      {
+        column: COL.DATE_OFFRE + 1,
+        ascending: false
+      },
+      {
+        column: COL.DATE_DETECTION + 1,
+        ascending: false
+      }
+    ]);
 }
 
 function doPost(e) {
@@ -376,22 +448,26 @@ function doPost(e) {
       }
 
       rowsToAppend.push([
-        job.date_detection || new Date().toISOString(),
-        job.statut || "NOUVEAU",
-        job.role_cible || "",
-        job.intitule || "",
-        job.entreprise || "",
-        job.lieu || "Deutschland (Allemagne)",
-        email || "",
-        job.source || "Scraper Cloud Ausbildung",
-        job.lien || "",
-        jobId,
-        "",
-        "",
-        job.date_offre || "",
-        Number(job.prioritaet_region || 0),
-        Number(job.prioritaet_ausbildung || 0),
-      ]);
+  job.date_detection || new Date().toISOString(), // A
+  job.statut || "NOUVEAU",                       // B
+  job.role_cible || "",                          // C
+  job.intitule || "",                            // D
+  job.entreprise || "",                          // E
+  job.lieu || "Deutschland (Allemagne)",        // F
+  email || "",                                   // G
+  job.site_entreprise || "",                     // H
+  job.source || "Scraper Cloud Ausbildung",      // I
+  job.lien || "",                                // J
+  jobId,                                         // K
+  "",                                            // L
+  "",                                            // M
+  0,                                             // N
+  "",                                            // O
+  "",                                            // P
+  job.date_offre || "",                          // Q
+  Number(job.prioritaet_region || 0),            // R
+  Number(job.prioritaet_ausbildung || 0)         // S
+]);
 
       existingIds.add(jobId);
       if (email) existingEmails.add(email);
@@ -446,7 +522,15 @@ function detecterSpecialite(intitule,roleCible){
   if(t.includes("systemgastronomie")) return "systemgastronomie";
   if(t.includes("einzelhandel")) return "einzelhandel";
   if(t.includes("spedition")||t.includes("logistikdienstleistung")||t.includes("speditionskauf")) return "spedition";
-  if(t.includes("gross")||t.includes("aussenhandel")||t.includes("grosshandel")) return "handel";
+ if(
+  t.includes("gross") ||
+  t.includes("groß") ||
+  t.includes("aussenhandel") ||
+  t.includes("außenhandel") ||
+  t.includes("grosshandel") ||
+  t.includes("großhandel")
+) return "handel";
+
   if(t.includes("industriekauf")) return "industrie";
   return "";
 }
