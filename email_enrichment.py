@@ -85,9 +85,8 @@ def normalize_company(company):
 
 def exhaustive_company_search(company, location=""):
     """
-    Search public web results only to discover the official company domain.
-    The email is accepted only after opening and verifying the official site.
-    Several query rounds and both search engines are used before giving up.
+    Find the official company website, then accept an email only when it is
+    published on that verified site and passes strict validation/company checks.
     """
     company = scraper.clean(company)
     if not company or company.lower() in {"à vérifier", "entreprise non indiquée"}:
@@ -130,30 +129,32 @@ def exhaustive_company_search(company, location=""):
 
                 time.sleep(random.uniform(0.15, 0.35))
 
-        # Open every strong candidate, not just the first result.
+        # Never accept an email from the search result snippet itself.
+        # First verify the domain/site, then inspect only that official site.
         for _, href in sorted(candidates, key=lambda x: x[0], reverse=True):
             host = scraper.host_of(href)
             if not host:
                 continue
 
             try:
-                site, homepage_email = scraper.verify_official_site(href, company)
+                site, _ = scraper.verify_official_site(href, company)
             except Exception:
-                site, homepage_email = "", ""
+                site = ""
 
             if not site:
                 continue
 
-            email = homepage_email or scraper.crawl_verified_site(site)
+            # Verify the actual company site and prefer a contact/career page.
+            email = scraper.crawl_verified_site(site)
+            email = scraper.plausible_public_email(email, company)
             if email:
+                print(f"[OK] Verified company email: {email} | {company} | {site}")
                 return email, site
 
         if round_no < SEARCH_ROUNDS:
             time.sleep(random.uniform(*SEARCH_RETRY_DELAY))
 
     return "", ""
-
-
 def enrich_group(group):
     company = group["company"]
     location = group.get("location", "")
