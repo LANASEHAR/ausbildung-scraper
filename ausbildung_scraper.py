@@ -1059,9 +1059,11 @@ def parse_detail(link):
                     if x
                 )) or "Deutschland"
 
-            # Search the complete JSON for public emails present in the
-            # official job details response.
-            email = first_email(json.dumps(details, ensure_ascii=False))
+            # BA JSON can contain emails belonging to the portal, technical
+            # metadata, or third parties. Only keep one that is plausible for
+            # the actual employer; otherwise leave it blank for enrichment.
+            raw_email = first_email(json.dumps(details, ensure_ascii=False))
+            email = plausible_public_email(raw_email, company)
 
             published = (
                 details.get("ersteVeroeffentlichungsdatum")
