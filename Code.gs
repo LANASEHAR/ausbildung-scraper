@@ -839,7 +839,15 @@ function traiterAusbildungCandidatures() {
     // Le workflow tente jusqu'à CONFIG.BATCH_LIMIT messages par passage.
     // Les limites réelles du compte Google restent appliquées côté Gmail/Apps Script.
     // Une erreur d'envoi est journalisée sans bloquer les autres lignes.
-    const limite = CONFIG.BATCH_LIMIT;
+    // Le quota Apps Script est la vraie limite : on ne tente jamais plus
+    // de messages que le nombre de destinataires encore disponible aujourd'hui.
+    const quotaRestant = MailApp.getRemainingDailyQuota();
+    if (quotaRestant <= 0) {
+      Logger.log("⛔ QUOTA GMAIL APPS SCRIPT ÉPUISÉ — aucun envoi tenté. Le prochain trigger réessaiera.");
+      return;
+    }
+    const limite = Math.min(CONFIG.BATCH_LIMIT, quotaRestant);
+    Logger.log("📨 Quota restant détecté : " + quotaRestant + " | limite de ce run : " + limite);
     const debutExecution = Date.now();
     let compteur = 0;
 
@@ -894,7 +902,7 @@ function traiterAusbildungCandidatures() {
       const intitule = String(row[COL.INTITULE] || "").trim();
       const entreprise = String(row[COL.ENTREPRISE] || "").trim() || "Unternehmen Deutschland";
       const emailCible = extractFirstEmail(row[COL.EMAILS_RH] || "");
-      const dateEnvoi = row[COL.DATE_ENVOI] ? new Date(row[COL.DATE_CANDIDATURE]) : null;
+      const dateEnvoi = row[COL.DATE_CANDIDATURE] ? new Date(row[COL.DATE_CANDIDATURE]) : null;
       const rowNum = i + 1;
 
       if (!emailCible || !isValidEmail(emailCible)) {
@@ -1046,7 +1054,7 @@ function configurerDeclencheurs() {
     .create();
 
   Logger.log("✅ Trigger horaire installé : 'traiterAusbildungCandidatures' sera exécuté toutes les heures.");
-  Logger.log("   → Jusqu'à 100 envois valides par exécution horaire, dans la limite du quota Gmail.");
+  Logger.log("   → Jusqu'à 100 envois valides par exécution, plafonnés par le quota Apps Script restant.");
 }
 
 /**
