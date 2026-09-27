@@ -116,89 +116,169 @@ USER_AGENTS = [
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36",
 ]
 
-EMAIL_RE = re.compile(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", re.I)
+EMAIL_RE = re.compile(r"(?<![A-Z0-9._%+\-])([A-Z0-9._%+\-]+@[A-Z0-9.-]+\.[A-Z]{2,63})(?![A-Z0-9._%+\-])", re.I)
 JOB_LINK_RE = re.compile(r"/jobsuche/jobdetail/", re.I)
 BAD_EMAIL_DOMAINS = {
     "arbeitsagentur.de", "example.com", "example.org", "example.net",
     "sentry.io", "wixpress.com", "google.com", "bing.com", "duckduckgo.com",
     "acronymfinder.com", "thesaurus.com", "applied.com",
 }
-BAD_SITE_DOMAINS = {
-    "arbeitsagentur.de", "indeed.com", "stepstone.de", "linkedin.com", "xing.com",
-    "meinestadt.de", "azubiyo.de", "ausbildung.de", "jobware.de", "monster.de",
-    "kimeta.de", "stellenanzeigen.de", "jobvector.de", "hokify.de", "jobisjob.de",
-    "glassdoor.de", "facebook.com", "instagram.com", "youtube.com", "tiktok.com",
-    "kununu.com", "meinpraktikum.de", "bing.com", "duckduckgo.com",
+FREE_MAIL_DOMAINS = {
+    "gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com",
+    "yahoo.com", "gmx.de", "gmx.net", "web.de", "t-online.de", "freenet.de",
 }
-CONTACT_WORDS = (
-    "kontakt", "contact", "impressum", "ansprechpartner", "karriere",
-    "bewerbung", "bewerben", "ausbildung", "jobs", "career", "team",
+GENERIC_LOCALPARTS = {
+    "example", "test", "testing", "noreply", "no-reply", "donotreply",
+    "do-not-reply", "mailer-daemon", "postmaster", "hostmaster",
+}
+EMAIL_CONTEXT_WORDS = (
+    "kontakt", "contact", "impressum", "ansprechpartner", "bewerbung",
+    "bewerben", "karriere", "career", "ausbildung", "personal", "hr",
+    "recruit", "recruiting", "human resources", "team",
 )
 
 
-def make_session(referer=None):
-    s = requests.Session()
-    s.headers.update({
-        "User-Agent": random.choice(USER_AGENTS),
-        "Accept-Language": "de-DE,de;q=0.9,en;q=0.7",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Connection": "keep-alive",
-    })
-    if referer:
-        s.headers["Referer"] = referer
-    return s
-
-
-def clean(value):
-    return re.sub(r"\s+", " ", str(value or "")).strip()
-
-
-def normalize_obfuscated_email(value):
-    value = str(value or "")
-    for pattern, replacement in [
-        (r"\s*\[at\]\s*", "@"), (r"\s*\(at\)\s*", "@"),
-        (r"\s+at\s+", "@"), (r"\s*\[dot\]\s*", "."),
-        (r"\s*\(dot\)\s*", "."), (r"\s+dot\s+", "."),
-    ]:
-        value = re.sub(pattern, replacement, value, flags=re.I)
-    return value
+def normalize_email_domain(domain):
+    domain = str(domain or "").strip().lower().rstrip(".")
+    try:
+        domain = domain.encode("idna").decode("ascii")
+    except UnicodeError:
+        pass
+    return domain
 
 
 def valid_email(email):
+    """Strict syntax/quality filter; does NOT claim mailbox existence."""
     email = normalize_obfuscated_email(email).lower().strip(" <>.,;:\"'()[]")
     if not EMAIL_RE.fullmatch(email):
         return ""
-    domain = email.split("@", 1)[-1]
+    local, domain = email.rsplit("@", 1)
+    domain = normalize_email_domain(domain)
+
     if domain in BAD_EMAIL_DOMAINS:
         return ""
-    return email
+    if domain in {"localhost", "local", "invalid"} or "." not in domain:
+        return ""
+    if len(local) > 64 or len(domain) > 253 or len(email) > 254:
+        return ""
+    if local.startswith(".") or local.endswith(".") or ".." in local:
+        return ""
+    if ".." in domain or domain.startswith(".") or domain.endswith("."):
+        return ""
+
+    local_lower = local.lower()
+    if local_lower in GENERIC_LOCALPARTS:
+        return ""
+    if any(ch.isspace() for ch in email):
+        return ""
+
+    labels = domain.split(".")
+    if any(not label or label.startswith("-") or label.endswith("-") for label in labels):
+        return ""
+    tld = labels[-1]
+    if not re.fullmatch(r"[a-z]{2,63}", tld):
+        return ""
+
+    return f"{local_lower}@{domain}"
 
 
-def first_email(text):
-    text = normalize_obfuscated_email(text)
-    for candidate in EMAIL_RE.findall(text or ""):
-        email = valid_email(candidate)
-        if email:
-            return email
-    return ""
+def email_from_mailto(href):
+    href = unquote(str(href or ""))
+    if not href.lower().startswith("mailto:"):
+        return ""
+    raw = href.split(":", 1)[1].split("?", 1)[0].strip()
+    # Mailto can contain display text or multiple addresses; accept only one
+    # clean address to avoid creating malformed recipient lists.
+    return valid_email(raw)
 
 
-def extract_email(soup):
+def email_context_score(soup, element):
+    """Prefer emails shown in contact/recruiting contexts over random page text."""
+    if element is None:
+        return 0
+    parent = element.parent
+    context = clean(" ".join([
+        element.get_text(" ", strip=True) if hasattr(element, "get_text") else "",
+        parent.get_text(" ", strip=True) if parent and hasattr(parent, "get_text") else "",
+        " ".join(str(element.get(attr, "")) for attr in ("aria-label", "title", "alt") if hasattr(element, "get")),
+    ])).lower()
+    score = 0
+    for word in EMAIL_CONTEXT_WORDS:
+        if word in context:
+            score += 2
+    return score
+
+
+def extract_email_candidates(soup):
+    """Return ranked, syntactically valid public email candidates."""
+    candidates = []
+
+    # 1) mailto links are strongest because the site explicitly publishes the
+    # address as a contact target.
     for a in soup.select('a[href^="mailto:"]'):
-        email = valid_email(a.get("href", "").split(":", 1)[-1].split("?", 1)[0])
+        email = email_from_mailto(a.get("href", ""))
         if email:
-            return email
-    email = first_email(soup.get_text(" ", strip=True))
-    if email:
-        return email
+            candidates.append((100 + email_context_score(soup, a), email))
+
+    # 2) Visible text / HTML attributes. Do not trust search-engine snippets.
+    text_sources = [soup.get_text(" ", strip=True), str(soup)]
     for tag in soup.find_all(True):
         for value in tag.attrs.values():
             if isinstance(value, list):
                 value = " ".join(map(str, value))
-            email = first_email(str(value))
-            if email:
-                return email
-    return first_email(str(soup))
+            text_sources.append(str(value))
+
+    seen = set()
+    for source in text_sources:
+        for candidate in EMAIL_RE.findall(normalize_obfuscated_email(source) or ""):
+            email = valid_email(candidate)
+            if email and email not in seen:
+                seen.add(email)
+                candidates.append((10, email))
+
+    # Deduplicate while keeping the highest score.
+    best = {}
+    for score, email in candidates:
+        best[email] = max(score, best.get(email, 0))
+    return sorted(((score, email) for email, score in best.items()), reverse=True)
+
+
+def extract_email(soup):
+    candidates = extract_email_candidates(soup)
+    return candidates[0][1] if candidates else ""
+
+
+def email_matches_company(email, company):
+    """Soft company-domain consistency check, not a hard reject for free mail."""
+    email = valid_email(email)
+    if not email or not company:
+        return False
+
+    domain = email.rsplit("@", 1)[1]
+    if domain in FREE_MAIL_DOMAINS:
+        return True
+
+    tokens = company_tokens(company) if "company_tokens" in globals() else [
+        x for x in re.findall(r"[a-z0-9äöüß]{3,}", normalize_obfuscated_email(str(company)).lower())
+        if x not in {"gmbh", "ag", "kg", "ohg", "ug", "se", "mbh", "group", "holding", "company"}
+    ]
+    normalized_domain = re.sub(r"[^a-z0-9]", "", domain.split(".")[0].lower())
+    return any(len(token) >= 4 and re.sub(r"[^a-z0-9]", "", token) in normalized_domain for token in tokens)
+
+
+def plausible_public_email(email, company=""):
+    email = valid_email(email)
+    if not email:
+        return ""
+    # A company-published free mailbox can be valid. For corporate domains,
+    # company-domain consistency reduces accidental capture from embedded
+    # third-party widgets/forms.
+    if email_matches_company(email, company):
+        return email
+    domain = email.rsplit("@", 1)[1]
+    if domain in FREE_MAIL_DOMAINS:
+        return email
+    return ""
 
 
 def extract_job_links(html):
