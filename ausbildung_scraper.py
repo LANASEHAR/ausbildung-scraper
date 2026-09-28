@@ -31,10 +31,10 @@ API_BACKOFF = (2.0, 5.0, 10.0)
 SEARCH_QUERIES = [
     "Hotelfachfrau Ausbildung", "Hotelfachmann Ausbildung", "Hotelkauffrau Ausbildung", "Hotelkaufmann Ausbildung",
     "Fachfrau für Systemgastronomie Ausbildung", "Fachmann für Systemgastronomie Ausbildung",
-    "Kauffrau im Einzelhandel Ausbildung", "Kaufmann im Einzelhandel Ausbildung",
-    "Kauffrau für Spedition und Logistikdienstleistung Ausbildung", "Kaufmann für Spedition und Logistikdienstleistung Ausbildung",
-    "Kauffrau im Groß- und Außenhandelsmanagement Ausbildung", "Kaufmann im Groß- und Außenhandelsmanagement Ausbildung",
-    "Industriekauffrau Ausbildung", "Industriekaufmann Ausbildung",
+    "Kauffrau im Einzelhandel Ausbildung", "Kaufmann im Einzelhandel Ausbildung", "Kauffrau/Kaufmann im Einzelhandel Ausbildung",
+    "Kauffrau für Spedition und Logistikdienstleistung Ausbildung", "Kaufmann für Spedition und Logistikdienstleistung Ausbildung", "Kauffrau/Kaufmann für Spedition und Logistikdienstleistung Ausbildung",
+    "Kauffrau im Groß- und Außenhandelsmanagement Ausbildung", "Kaufmann im Groß- und Außenhandelsmanagement Ausbildung", "Kauffrau/Kaufmann im Groß- und Außenhandelsmanagement Ausbildung",
+    "Industriekauffrau Ausbildung", "Industriekaufmann Ausbildung", "Industriekauffrau/-mann Ausbildung",
 ]
 
 ROLE_PRIORITY = [
@@ -54,7 +54,7 @@ REGION_PRIORITY = [
     ("West-Niedersachsen & französisch-deutscher Grenzraum", 2, ("west-niedersachsen","westniedersachsen","niedersachsen","osnabrück","osnabrueck","emsland","lingen","papenburg","meppen","cloppenburg","vechta","oldenburg","ammerland","grafschaft bentheim","nordhorn","aurich","leer","saarland","saarbrücken","saarbruecken","rheinland-pfalz","trier","kaiserslautern","koblenz","landau","zweibrücken","zweibruecken","kehl","ortenau")),
 ]
 PRIMARY_SOURCE_DOMAINS=["ihk-lehrstellenboerse.de","arbeitsagentur.de/jobsuche","meine-ausbildung-in-niedersachsen.de","ausbildung.nrw","meine-ausbildung.de","ihk-ausbildungsatlas.de","ausbildungsatlas.ihk.de","ausbildungsatlas.unikam.de"]
-SECTOR_SOURCE_DOMAINS=["yourfirm.de","logistikmitarbeiter.de","hotelcareer.de","hogapage.de","gastgebervonmorgen.de","dehoga.de/ausbildung","systemgastronomie-ausbildung.de","azubiyo.de"]
+SECTOR_SOURCE_DOMAINS=["yourfirm.de","hotelcareer.de","hogapage.de","dehoga.de/ausbildung","systemgastronomie-ausbildung.de","azubiyo.de"]
 ALL_SOURCE_DOMAINS=PRIMARY_SOURCE_DOMAINS+SECTOR_SOURCE_DOMAINS
 ROLE_SEARCH_TERMS={
 "Hotelfachfrau / Hotelkauffrau":'"Hotelfachfrau" OR "Hotelkauffrau" OR "Hotelfachmann" OR "Hotelkaufmann"',
@@ -148,39 +148,20 @@ def normalize_email_domain(domain):
 
 
 def valid_email(email):
-    """Strict syntax/quality filter; does NOT claim mailbox existence."""
-    email = normalize_obfuscated_email(email).lower().strip(" <>.,;:\"'()[]")
+    """Normalize an email actually extracted from a source page or employer site.
+
+    Deliberately permissive: no employer-domain matching, free-mail restriction,
+    generic-localpart blacklist, or mailbox-existence claim.
+    """
+    email = normalize_obfuscated_email(email).strip(" <>.,;:\"'()[]")
     if not EMAIL_RE.fullmatch(email):
         return ""
     local, domain = email.rsplit("@", 1)
-    domain = normalize_email_domain(domain)
-
-    if domain in BAD_EMAIL_DOMAINS:
-        return ""
-    if domain in {"localhost", "local", "invalid"} or "." not in domain:
-        return ""
-    if len(local) > 64 or len(domain) > 253 or len(email) > 254:
-        return ""
-    if local.startswith(".") or local.endswith(".") or ".." in local:
-        return ""
-    if ".." in domain or domain.startswith(".") or domain.endswith("."):
-        return ""
-
-    local_lower = local.lower()
-    if local_lower in GENERIC_LOCALPARTS:
+    if not local or not domain or "." not in domain:
         return ""
     if any(ch.isspace() for ch in email):
         return ""
-
-    labels = domain.split(".")
-    if any(not label or label.startswith("-") or label.endswith("-") for label in labels):
-        return ""
-    tld = labels[-1]
-    if not re.fullmatch(r"[a-z]{2,63}", tld):
-        return ""
-
-    return f"{local_lower}@{domain}"
-
+    return f"{local.lower()}@{domain.lower().rstrip('.')}"
 
 def email_from_mailto(href):
     href = unquote(str(href or ""))
@@ -267,19 +248,8 @@ def email_matches_company(email, company):
 
 
 def plausible_public_email(email, company=""):
-    email = valid_email(email)
-    if not email:
-        return ""
-    # A company-published free mailbox can be valid. For corporate domains,
-    # company-domain consistency reduces accidental capture from embedded
-    # third-party widgets/forms.
-    if email_matches_company(email, company):
-        return email
-    domain = email.rsplit("@", 1)[1]
-    if domain in FREE_MAIL_DOMAINS:
-        return email
-    return ""
-
+    """Compatibility wrapper: keep any email actually extracted from a source page."""
+    return valid_email(email)
 
 def extract_job_links(html):
     soup = BeautifulSoup(html, "html.parser")
@@ -320,8 +290,8 @@ def api_search_page(session, query, page):
     then fall back to the app endpoint.
     """
     endpoint_variants = [
-        (BA_API_SEARCH_URL, {"angebotsart": 4, "was": query, "page": page, "size": BA_API_SIZE}),
-        (BA_API_SEARCH_URL, {"angebotsart": 4, "was": query, "wo": "Deutschland", "page": page, "size": BA_API_SIZE}),
+        (BA_API_SEARCH_URL, {"angebotsart": 4, "was": query, "page": page, "size": BA_API_SIZE, "sort": "Aktualitaet"}),
+        (BA_API_SEARCH_URL, {"angebotsart": 4, "was": query, "wo": "Deutschland", "page": page, "size": BA_API_SIZE, "sort": "Aktualitaet"}),
         (BA_API_BASE + "/pc/v4/app/jobs", {"angebotsart": 4, "was": query, "page": page, "size": BA_API_SIZE}),
     ]
 
@@ -459,41 +429,51 @@ def _iter_ba_links():
 
 
 def _iter_external_links():
-    """Yield portal/sector links incrementally instead of building one huge list."""
+    """Scrape every configured portal/sector source on every run.
+
+    Each source is queried independently for every target role and priority
+    region. Bing is the primary discovery engine and DuckDuckGo is a second
+    discovery path. The actual offer page is fetched later by
+    parse_external_detail().
+    """
     session = make_session()
     seen = set()
     queries = _source_search_queries()
-    print(f"[*] Multi-source search: {len(queries)} source/region/role queries.")
+    print(f"[*] Multi-source search: {len(queries)} source/region/role queries x 2 search engines; every configured source is visited every run.")
 
     for n, (rn, rol, dom, q) in enumerate(queries, 1):
         if scrape_time_exhausted():
             return
 
-        try:
-            results = _bing_search(session, q)
-        except requests.RequestException as exc:
-            print(f"[!] Source search échouée ({dom} / {rn} / {rol}): {exc}")
-            continue
-
         base_domain = dom.split("/")[0]
         added = 0
 
-        for url, title, snippet in results:
-            host = host_of(url)
-            if not host or not (host == base_domain or host.endswith("." + base_domain)):
+        for engine_name in ("Bing", "DuckDuckGo"):
+            if scrape_time_exhausted():
+                return
+
+            try:
+                results = _bing_search(session, q) if engine_name == "Bing" else search_engine_duckduckgo(session, q)
+            except requests.RequestException as exc:
+                print(f"[!] {engine_name} source search échouée ({dom} / {rn} / {rol}): {exc}")
                 continue
-            if url in seen:
-                continue
-            seen.add(url)
-            added += 1
-            yield url
+
+            for url, title, snippet in results:
+                host = host_of(url)
+                if not host or not (host == base_domain or host.endswith("." + base_domain)):
+                    continue
+                if url in seen:
+                    continue
+                seen.add(url)
+                added += 1
+                yield url
+
+            time.sleep(random.uniform(*SEARCH_DELAY))
 
         if added:
             print(f"[+] SOURCE {n}/{len(queries)} | {dom} | {rn} | {rol} | +{added}")
-        if n % 25 == 0:
+        if n % 20 == 0:
             print(f"[*] Source search progress {n}/{len(queries)} | {len(seen)} unique links")
-
-        time.sleep(random.uniform(*SEARCH_DELAY))
 
 
 def iter_collected_links():
@@ -713,7 +693,7 @@ def extract_posting_sort_date(job):
 
 def job_sort_key(job):
     rn,rr=detect_region(job); ro,ror=detect_target_role(job)
-    return (rr,ror,extract_posting_sort_date(job),clean(job.get("date_detection","")),clean(job.get("id","")))
+    return (extract_posting_sort_date(job),rr,ror,clean(job.get("date_detection","")),clean(job.get("id","")))
 
 def prioritize_jobs(jobs):
     filtered=[]; seen=set()
@@ -730,7 +710,7 @@ def prioritize_jobs(jobs):
         seen.add(job.get("id")); filtered.append(job)
     filtered.sort(key=job_sort_key,reverse=True)
     print(f"[*] Filtrage: {len(filtered)} offres conservées sur les six Ausbildung cibles.")
-    print("[*] Ordre: régions 1→6 puis reste; Ausbildung 1→6; nouvelles offres puis anciennes.")
+    print("[*] Ordre: publication la plus récente → la plus ancienne; région/Ausbildung utilisés seulement en cas d'égalité.")
     return filtered
 
 def _normalized_text(value):
@@ -949,6 +929,7 @@ def parse_external_detail(link):
         soup=BeautifulSoup(r.text,"html.parser"); text=clean(soup.get_text(" ",strip=True)); h1=soup.find("h1")
         title=clean(h1.get_text(" ",strip=True) if h1 else (soup.title.get_text(" ",strip=True) if soup.title else ""))
         company=""; location=""; published=""; description=""; email=extract_email(soup)
+        employer_site=""; external_apply_url=""
         for script in soup.find_all("script",type="application/ld+json"):
             try:
                 data=json.loads(script.string or script.get_text() or "{}"); items=data if isinstance(data,list) else [data]
@@ -957,7 +938,10 @@ def parse_external_detail(link):
                     title=clean(item.get("title") or title); published=clean(item.get("datePosted") or item.get("dateCreated") or published)
                     description=clean(item.get("description") or description)
                     org=item.get("hiringOrganization") or {}
-                    if isinstance(org,dict): company=clean(org.get("name") or company)
+                    if isinstance(org,dict):
+                        company=clean(org.get("name") or company)
+                        employer_site=clean(org.get("url") or org.get("sameAs") or employer_site)
+                    external_apply_url=clean(item.get("directApply") or item.get("url") or external_apply_url)
                     loc=item.get("jobLocation") or {}
                     if isinstance(loc,list): loc=loc[0] if loc else {}
                     if isinstance(loc,dict):
@@ -976,7 +960,17 @@ def parse_external_detail(link):
         if not published: published=extract_offer_date(text)
         role=_detect_role_title(title,text)
         if not role: return None
-        base.update({"intitule":title or role,"entreprise":company or "","lieu":location or "Deutschland","emails_rh":email,"role_cible":role,"date_offre":published,"description":description or text[:8000]})
+        base.update({
+            "intitule":title or role,
+            "entreprise":company or "",
+            "lieu":location or "Deutschland",
+            "emails_rh":email,
+            "role_cible":role,
+            "date_offre":published,
+            "description":description or text[:8000],
+            "site_entreprise": employer_site,
+            "lien": external_apply_url or link,
+        })
         ensure_employer_name(base, url=link, soup=soup, text=text)
         return base
     except requests.RequestException as exc:
