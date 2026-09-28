@@ -154,7 +154,7 @@ function formatDateDE(date) {
 /**
  * Point d'entrée du webhook HTTP POST.
  * Appelé automatiquement par ausbildung_scraper.py via GOOGLE_SHEET_WEBHOOK_URL.
- * Insère uniquement les nouvelles offres (déduplication par ID colonne J).
+ * Insère uniquement les nouvelles offres (déduplication par ID colonne K).
  */
 function testerDoPost() {
   const testPayload = [{
@@ -269,20 +269,23 @@ function sortOffers(sheet) {
       REQUIRED_COLUMNS
     )
     .sort([
+      // Primary order: newest publication first.
+      {
+        column: COL.DATE_OFFRE + 1,
+        ascending: false
+      },
+      // Detection timestamp is the fallback when publication date is absent/equal.
+      {
+        column: COL.DATE_DETECTION + 1,
+        ascending: false
+      },
+      // Region and Ausbildung priority are only tie-breakers.
       {
         column: COL.PRIORITE_REGION + 1,
         ascending: false
       },
       {
         column: COL.PRIORITE_AUSBILDUNG + 1,
-        ascending: false
-      },
-      {
-        column: COL.DATE_OFFRE + 1,
-        ascending: false
-      },
-      {
-        column: COL.DATE_DETECTION + 1,
         ascending: false
       }
     ]);
