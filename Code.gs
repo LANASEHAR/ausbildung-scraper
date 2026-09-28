@@ -339,7 +339,9 @@ function doPost(e) {
         "relance effectuée",
         "erreur smtp",
         "erreur cv",
-        "envoi smtp en cours"
+        "envoi smtp en cours",
+        "erreur gmail api",
+        "envoi gmail api en cours"
       ]);
 
       const sentEmails = new Set();
