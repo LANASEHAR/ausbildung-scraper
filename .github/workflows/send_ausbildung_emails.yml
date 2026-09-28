@@ -1,0 +1,90 @@
+name: Ausbildung SMTP Email Sender
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_emails:
+        description: "Maximum emails for this run (1-25)"
+        required: true
+        default: "25"
+        type: string
+      dry_run:
+        description: "Send exactly one test email to your own Gmail"
+        required: true
+        default: true
+        type: boolean
+
+  schedule:
+    - cron: "30 8 * * 1-5"
+      timezone: "Europe/Berlin"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ausbildung-smtp-sender
+  cancel-in-progress: false
+
+jobs:
+  send_emails:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip requests
+
+      - name: Validate sender
+        env:
+          GMAIL_USER: \${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: \${{ secrets.GMAIL_APP_PASSWORD }}
+          GOOGLE_SHEET_WEBHOOK_URL: \${{ secrets.GOOGLE_SHEET_WEBHOOK_URL }}
+        run: |
+          python -m py_compile send_emails_smtp.py
+          python - <<'PY'
+          import os
+          import send_emails_smtp as sender
+
+          required = ["GMAIL_USER", "GMAIL_APP_PASSWORD", "GOOGLE_SHEET_WEBHOOK_URL"]
+          missing = [name for name in required if not os.environ.get(name)]
+          if missing:
+              raise SystemExit("Missing secrets: " + ", ".join(missing))
+
+          assert sender.SMTP_HOST == "smtp.gmail.com"
+          assert sender.SMTP_PORT == 465
+          assert sender.MAX_EMAILS_PER_RUN <= 25
+          assert sender.MIN_DELAY_SECONDS == 40
+          assert sender.MAX_DELAY_SECONDS == 60
+          assert sender.normalize_company("Unbekannt") == ("in Ihrem Unternehmen", False)
+          assert sender.normalize_company("N/A") == ("in Ihrem Unternehmen", False)
+          assert sender.valid_email("TEST@example.de") == "test@example.de"
+          print("SMTP sender preflight OK")
+          PY
+
+      - name: Send Ausbildung emails
+        env:
+          GMAIL_USER: \${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: \${{ secrets.GMAIL_APP_PASSWORD }}
+          GOOGLE_SHEET_WEBHOOK_URL: \${{ secrets.GOOGLE_SHEET_WEBHOOK_URL }}
+          MAX_EMAILS_PER_RUN: \${{ github.event.inputs.max_emails || '25' }}
+          DRY_RUN: \${{ github.event.inputs.dry_run || 'false' }}
+          SMTP_DAILY_SAFETY_CAP: "100"
+        run: |
+          if [ "\${MAX_EMAILS_PER_RUN}" -lt 1 ] || [ "\${MAX_EMAILS_PER_RUN}" -gt 25 ]; then
+            echo "max_emails must be between 1 and 25"
+            exit 1
+          fi
+
+          if [ "\${DRY_RUN}" = "true" ]; then
+            python -u send_emails_smtp.py --max-emails 1 --dry-run
+          else
+            python -u send_emails_smtp.py --max-emails "\${MAX_EMAILS_PER_RUN}"
+          fi
