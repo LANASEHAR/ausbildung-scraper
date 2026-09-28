@@ -68,7 +68,7 @@ ROLE_MOTIVATIONS = {
     "buero": "Durch meine mehrjährige Berufserfahrung in Kundenbetreuung, Vertrieb und kaufmännischen Abläufen bringe ich bereits praktische Erfahrung in Organisation, Auftragsbearbeitung und strukturierter Kommunikation mit. Diese Erfahrung möchte ich nun gezielt mit einer deutschen Ausbildung und einem anerkannten IHK-Abschluss im Büromanagement verbinden.",
 }
 
-EMAIL_RE = re.compile(r"^[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,63}$", re.I)
+EMAIL_RE = re.compile(r"^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,63}$", re.I)
 
 
 class SenderError(RuntimeError):
@@ -94,7 +94,7 @@ def valid_email(value: Any) -> str:
 
 
 def normalize_company(value: Any) -> tuple[str, bool]:
-    raw = re.sub(r"\\s+", " ", str(value or "")).strip()
+    raw = re.sub(r"\s+", " ", str(value or "")).strip()
     if raw.casefold().rstrip(".") in INVALID_COMPANY_MARKERS:
         return "in Ihrem Unternehmen", False
     return raw, True
