@@ -25,7 +25,7 @@ def main() -> int:
         raise SystemExit(f"Credentials file not found: {credentials_path}")
 
     flow = InstalledAppFlow.from_client_secrets_file(str(credentials_path), SCOPES)
-    creds = flow.run_local_server(port=0, access_type="offline", prompt="consent")
+    creds = flow.run_local_server(port=8080, access_type="offline", prompt="consent")
 
     print("\n=== GITHUB SECRET VALUES ===")
     print(f"GMAIL_CLIENT_ID={flow.client_config['client_id']}")
