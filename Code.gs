@@ -318,6 +318,194 @@ function doPost(e) {
     const allData = sheet.getDataRange().getValues();
     const { existingIds, existingEmails } = buildSheetIndexes(allData);
 
+    // ── MODE EXPORT_SEND_QUEUE : file d'attente du moteur SMTP ─────────────
+    if (rawData && rawData.action === "export_send_queue") {
+      const limit = Math.min(25, Math.max(1, Number(rawData.limit || 25)));
+      const safetyCap = Math.max(1, Number(rawData.smtp_daily_safety_cap || 100));
+      const nowMs = new Date().getTime();
+      const cutoffMs = nowMs - (24 * 60 * 60 * 1000);
+      const sentStatuses = new Set([
+        "envoyé",
+        "candidature_envoyee",
+        "candidature envoyee",
+        "relance_effectuee",
+        "relance effectuée"
+      ]);
+      const blockedStatuses = new Set([
+        "envoyé",
+        "candidature_envoyee",
+        "candidature envoyee",
+        "relance_effectuee",
+        "relance effectuée",
+        "erreur smtp",
+        "erreur cv"
+      ]);
+
+      const sentEmails = new Set();
+      let sentLast24h = 0;
+
+      for (let i = 1; i < allData.length; i++) {
+        const row = allData[i];
+        const status = String(row[COL.STATUT] || "").trim().toLowerCase();
+        const email = extractFirstEmail(row[COL.EMAILS_RH] || "");
+        const sentDate = row[COL.DATE_CANDIDATURE];
+
+        if (email && sentStatuses.has(status)) {
+          sentEmails.add(email);
+        }
+
+        if (email && sentStatuses.has(status) && sentDate) {
+          const ms = new Date(sentDate).getTime();
+          if (Number.isFinite(ms) && ms >= cutoffMs) {
+            sentLast24h++;
+          }
+        }
+      }
+
+      const rows = [];
+      const queuedEmails = new Set();
+
+      if (sentLast24h < safetyCap) {
+        for (let i = 1; i < allData.length && rows.length < limit; i++) {
+          const row = allData[i];
+          const statusRaw = String(row[COL.STATUT] || "").trim();
+          const status = statusRaw.toLowerCase();
+          const email = extractFirstEmail(row[COL.EMAILS_RH] || "");
+
+          if (!email || blockedStatuses.has(status) || sentEmails.has(email)) continue;
+          if (queuedEmails.has(email)) continue;
+
+          // Only new/empty rows are eligible for the SMTP initial-candidate queue.
+          if (status && status !== "nouveau") continue;
+
+          queuedEmails.add(email);
+          rows.push({
+            row_number: i + 1,
+            id: String(row[COL.ID] || "").trim(),
+            statut: statusRaw,
+            role_cible: String(row[COL.ROLE_CIBLE] || "").trim(),
+            intitule: String(row[COL.INTITULE] || "").trim(),
+            entreprise: String(row[COL.ENTREPRISE] || "").trim(),
+            lieu: String(row[COL.LIEU] || "").trim(),
+            emails_rh: email,
+            site_entreprise: String(row[COL.SITE_ENTREPRISE] || "").trim(),
+            source: String(row[COL.SOURCE] || "").trim(),
+            lien: String(row[COL.LIEN] || "").trim(),
+            cv_utilise: String(row[COL.CV_UTILISE] || "").trim()
+          });
+        }
+      }
+
+      return ContentService
+        .createTextOutput(JSON.stringify({
+          status: "success",
+          action: "export_send_queue",
+          rows: rows,
+          returned: rows.length,
+          sent_last_24h: sentLast24h,
+          safety_cap: safetyCap
+        }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // ── MODE GET_CV : le Python récupère les PDF stockés dans Drive ─────────
+    if (rawData && rawData.action === "get_cv") {
+      const filename = String(rawData.filename || "").trim();
+      if (!filename) {
+        return ContentService
+          .createTextOutput(JSON.stringify({
+            status: "error",
+            message: "CV filename missing"
+          }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+
+      const folders = DriveApp.getFoldersByName(CONFIG.CV_FOLDER_NAME);
+      if (!folders.hasNext()) {
+        return ContentService
+          .createTextOutput(JSON.stringify({
+            status: "error",
+            message: "CV folder not found: " + CONFIG.CV_FOLDER_NAME
+          }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+
+      const folder = folders.next();
+      const files = folder.getFilesByName(filename);
+      if (!files.hasNext()) {
+        return ContentService
+          .createTextOutput(JSON.stringify({
+            status: "error",
+            message: "CV not found: " + filename
+          }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+
+      const file = files.next();
+      const blob = file.getBlob();
+
+      return ContentService
+        .createTextOutput(JSON.stringify({
+          status: "success",
+          action: "get_cv",
+          filename: file.getName(),
+          mime_type: blob.getContentType(),
+          base64: Utilities.base64Encode(blob.getBytes())
+        }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // ── MODE UPDATE_SEND_STATUS : écriture immédiate après chaque SMTP send ─
+    if (rawData && rawData.action === "update_send_status") {
+      const rowNumber = Math.floor(Number(rawData.row_number || 0));
+      const status = String(rawData.status || "").trim();
+
+      if (rowNumber < 2 || rowNumber > sheet.getLastRow()) {
+        return ContentService
+          .createTextOutput(JSON.stringify({
+            status: "error",
+            message: "Invalid row_number: " + rowNumber
+          }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+
+      if (!["Envoyé", "Erreur SMTP"].includes(status)) {
+        return ContentService
+          .createTextOutput(JSON.stringify({
+            status: "error",
+            message: "Unsupported SMTP status: " + status
+          }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+
+      const now = new Date();
+      sheet.getRange(rowNumber, COL.STATUT + 1).setValue(status);
+
+      if (status === "Envoyé") {
+        sheet.getRange(rowNumber, COL.DATE_CANDIDATURE + 1)
+          .setValue(rawData.date_candidature ? new Date(rawData.date_candidature) : now);
+      }
+
+      if (rawData.cv_utilise !== undefined) {
+        sheet.getRange(rowNumber, COL.CV_UTILISE + 1)
+          .setValue(String(rawData.cv_utilise || ""));
+      }
+
+      if (rawData.message_envoye !== undefined) {
+        sheet.getRange(rowNumber, COL.MESSAGE_ENVOYE + 1)
+          .setValue(String(rawData.message_envoye || ""));
+      }
+
+      return ContentService
+        .createTextOutput(JSON.stringify({
+          status: "success",
+          action: "update_send_status",
+          row_number: rowNumber,
+          new_status: status
+        }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
     // ── MODE EXPORT_MISSING_EMAILS : lecture des lignes sans email ─────────
     // Utilisé par le workflow GitHub d'enrichissement. La lecture est paginée
     // pour éviter une réponse énorme et pour laisser le workflow reprendre
