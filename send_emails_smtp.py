@@ -183,7 +183,10 @@ def recuperer_offres_en_attente():
         timeout=60,
     )
     resp.raise_for_status()
-    return resp.json().get("items", [])
+    data = resp.json()
+    if "stats" in data:
+        print(f"📊 Diagnostic Sheet ({data.get('sheet_name')}): {data['stats']}")
+    return data.get("items", [])
 
 
 def recuperer_cv_depuis_drive(specialite: str, cv_cache: dict):
