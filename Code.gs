@@ -470,7 +470,7 @@ function doPost(e) {
           .setMimeType(ContentService.MimeType.JSON);
       }
 
-      if (!["Envoyé", "Erreur SMTP", "Envoi SMTP en cours"].includes(status)) {
+      if (!["Envoyé", "Erreur SMTP", "Erreur Gmail API", "Envoi SMTP en cours", "Envoi Gmail API en cours"].includes(status)) {
         return ContentService
           .createTextOutput(JSON.stringify({
             status: "error",
