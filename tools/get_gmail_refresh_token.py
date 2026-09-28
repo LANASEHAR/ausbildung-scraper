@@ -96,7 +96,8 @@ def main() -> int:
     if "error" in result:
         raise SystemExit(f"OAuth failed: {result['error']}")
 
-    flow.fetch_token(code=result["code"])
+    flow.oauth2session.state = None
+    flow.fetch_token(code=result["code"], include_client_id=True)
     creds = flow.credentials
 
     print("\n=== GITHUB SECRET VALUES ===")
