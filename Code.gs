@@ -802,27 +802,7 @@ ${getSignatureHTML()}
 
 
 
-function genererEmailRelance(entreprise, intitule, roleCible) {
-  const specialite = detecterSpecialite(intitule, roleCible);
-  const titrePoste = getTitreAusbildung(specialite);
 
-  const body = `
-<p>Sehr geehrte Damen und Herren,</p>
-
-<p>vor zwei Tagen habe ich Ihnen meine Bewerbung für einen Ausbildungsplatz als <strong>${titrePoste}</strong> geschickt. Ich wollte mich kurz erkundigen, ob meine Unterlagen gut bei Ihnen angekommen sind.</p>
-
-<p>Ich bin weiterhin sehr an der Ausbildung interessiert und sende Ihnen meinen Lebenslauf vorsichtshalber noch einmal im Anhang.</p>
-
-<p>Falls Sie noch weitere Unterlagen oder Informationen benötigen, lasse ich Ihnen diese gerne zukommen. Für ein kurzes Gespräch stehe ich Ihnen jederzeit gerne zur Verfügung.</p>
-
-<p>Vielen Dank für Ihre Zeit. Ich freue mich auf Ihre Rückmeldung.</p>
-
-<p>Mit freundlichen Grüßen</p>
-${getSignatureHTML()}
-`.trim();
-
-  return { titrePoste, body };
-}
 
 
 // ─────────────────────────────────────────────────────────────────────────────
