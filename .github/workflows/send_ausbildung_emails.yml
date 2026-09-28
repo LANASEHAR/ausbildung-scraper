@@ -1,4 +1,4 @@
-name: Ausbildung SMTP Email Sender
+name: Ausbildung Gmail API Email Sender
 
 on:
   workflow_dispatch:
@@ -22,7 +22,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ausbildung-smtp-sender
+  group: ausbildung-gmail-api-sender
   cancel-in-progress: false
 
 jobs:
@@ -45,22 +45,25 @@ jobs:
       - name: Validate sender
         env:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
-          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
+          GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
+          GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
           GOOGLE_SHEET_WEBHOOK_URL: ${{ secrets.GOOGLE_SHEET_WEBHOOK_URL }}
         run: |
-          python -m py_compile send_emails_smtp.py
+          python -m py_compile send_emails_gmail_api.py
           python - <<'PY'
           import os
-          import send_emails_smtp as sender
+          import send_emails_gmail_api as sender
 
-          required = ["GMAIL_USER", "GMAIL_APP_PASSWORD", "GOOGLE_SHEET_WEBHOOK_URL"]
+          required = ["GMAIL_USER", "GMAIL_CLIENT_ID", "GMAIL_CLIENT_SECRET", "GMAIL_REFRESH_TOKEN", "GOOGLE_SHEET_WEBHOOK_URL"]
           missing = [name for name in required if not os.environ.get(name)]
           if missing:
               raise SystemExit("Missing secrets: " + ", ".join(missing))
 
-          assert sender.SMTP_HOST == "smtp.gmail.com"
-          assert sender.SMTP_PORT == 465
+          assert sender.GMAIL_SEND_URL.endswith("/users/me/messages/send")
+          assert sender.GMAIL_TOKEN_URL == "https://oauth2.googleapis.com/token"
           assert sender.MAX_EMAILS_PER_RUN <= 25
+          assert sender.GMAIL_DAILY_SAFETY_CAP <= 500
           assert sender.MIN_DELAY_SECONDS == 40
           assert sender.MAX_DELAY_SECONDS == 60
           assert sender.normalize_company("Unbekannt") == ("in Ihrem Unternehmen", False)
@@ -76,7 +79,7 @@ jobs:
           GOOGLE_SHEET_WEBHOOK_URL: ${{ secrets.GOOGLE_SHEET_WEBHOOK_URL }}
           MAX_EMAILS_PER_RUN: ${{ github.event.inputs.max_emails || '25' }}
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
-          SMTP_DAILY_SAFETY_CAP: "500"
+          GMAIL_DAILY_SAFETY_CAP: "500"
         run: |
           if [ "${MAX_EMAILS_PER_RUN}" -lt 1 ] || [ "${MAX_EMAILS_PER_RUN}" -gt 25 ]; then
             echo "max_emails must be between 1 and 25"
