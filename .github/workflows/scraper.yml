@@ -35,23 +35,55 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y tesseract-ocr tesseract-ocr-deu
           python -m pip install --upgrade pip
-          pip install requests beautifulsoup4 lxml pillow pytesseract
+          pip install requests beautifulsoup4 lxml pillow pytesseract flake8
 
       - name: Validate Python syntax and imports
         env:
           GOOGLE_SHEET_WEBHOOK_URL: ${{ secrets.GOOGLE_SHEET_WEBHOOK_URL }}
         run: |
           python -m py_compile ausbildung_scraper.py daily_runner.py
+          python -m flake8 ausbildung_scraper.py daily_runner.py --select=F821,F823
           python - <<'PY'
           import os
           import ausbildung_scraper as scraper
           import daily_runner
-          assert hasattr(scraper, "iter_collected_links")
-          assert hasattr(scraper, "scrape_details")
-          assert hasattr(scraper, "enrich_missing_emails")
+
+          required_scraper = [
+              "make_session", "clean", "normalize_obfuscated_email", "first_email",
+              "iter_collected_links", "scrape_details", "enrich_missing_emails",
+              "prioritize_jobs", "send_to_sheet",
+          ]
+          missing = [name for name in required_scraper if not hasattr(scraper, name)]
+          assert not missing, f"Missing scraper symbols: {missing}"
+
           assert hasattr(daily_runner, "process_batch")
           assert os.environ.get("GOOGLE_SHEET_WEBHOOK_URL"), "GOOGLE_SHEET_WEBHOOK_URL is missing"
-          print("Preflight OK")
+
+          # Offline smoke tests for the helpers that previously failed only at runtime.
+          assert scraper.clean("  A   B  ") == "A B"
+          assert scraper.valid_email("Test@Example.de") == "test@example.de"
+          assert scraper.first_email("Kontakt: test [at] example.de") == "test@example.de"
+
+          class FakeResponse:
+              status_code = 200
+              def raise_for_status(self):
+                  pass
+              def json(self):
+                  return {"stellenangebote": [{
+                      "refnr": "SMOKE-TEST",
+                      "aktuelleVeroeffentlichungsdatum": "2026-09-28"
+                  }]}
+
+          class FakeSession:
+              def __init__(self):
+                  self.headers = {}
+              def get(self, *args, **kwargs):
+                  return FakeResponse()
+
+          smoke_links = scraper.api_search_page(FakeSession(), "Industriekaufmann Ausbildung", 1)
+          assert smoke_links and smoke_links[0].startswith("aaapi://"), "BA API parser smoke test failed"
+
+          print("Preflight OK — syntax, undefined names, helpers and BA parser smoke test passed")
           PY
 
       - name: Run twice-daily time-budget scraper
