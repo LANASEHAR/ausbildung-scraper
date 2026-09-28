@@ -1,6 +1,9 @@
 name: Ausbildung Job Scraper + Email Search
 
 on:
+  push:
+    branches:
+      - main
   schedule:
     # Two complete collections per day at 06:00 and 18:00 UTC.
     - cron: '0 6,18 * * *'
@@ -87,6 +90,7 @@ jobs:
           PY
 
       - name: Run twice-daily time-budget scraper
+        if: github.event_name != 'push'
         env:
           GOOGLE_SHEET_WEBHOOK_URL: ${{ secrets.GOOGLE_SHEET_WEBHOOK_URL }}
         run: python -u daily_runner.py
