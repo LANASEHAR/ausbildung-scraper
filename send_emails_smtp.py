@@ -20,7 +20,7 @@ import requests
 SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = 465
 SENDER_NAME = "Halima Essaouaf"
-SENDER_EMAIL = os.environ.get("GMAIL_USER", "essaouafhalima@gmail.com")
+SIGNATURE_EMAIL = "essaouafhalima@gmail.com"
 SIGNATURE_CITY = "Casablanca, Marokko"
 SIGNATURE_PHONE = "+212 619 968 131"
 SIGNATURE_LINKEDIN = "linkedin.com/in/halima-essaouaf-1b4b81202"
@@ -125,7 +125,7 @@ def signature_html() -> str:
         '<div style="font-family:Arial,sans-serif;font-size:13px;color:#333;margin-top:22px">'
         f"<strong>{html.escape(SENDER_NAME)}</strong><br>"
         f"{html.escape(SIGNATURE_CITY)}<br>"
-        f'<a href="mailto:{html.escape(SENDER_EMAIL)}">{html.escape(SENDER_EMAIL)}</a><br>'
+        f'<a href="mailto:{html.escape(SIGNATURE_EMAIL)}">{html.escape(SIGNATURE_EMAIL)}</a><br>'
         f"{html.escape(SIGNATURE_PHONE)}<br>"
         f'<a href="https://{html.escape(SIGNATURE_LINKEDIN)}">{html.escape(SIGNATURE_LINKEDIN)}</a>'
         "</div>"
@@ -133,7 +133,7 @@ def signature_html() -> str:
 
 
 def signature_text() -> str:
-    return f"{SENDER_NAME}\n{SIGNATURE_CITY}\n{SENDER_EMAIL}\n{SIGNATURE_PHONE}\n{SIGNATURE_LINKEDIN}"
+    return f"{SENDER_NAME}\n{SIGNATURE_CITY}\n{SIGNATURE_EMAIL}\n{SIGNATURE_PHONE}\n{SIGNATURE_LINKEDIN}"
 
 
 def build_email(row: dict[str, Any]) -> tuple[str, str, str, str]:
