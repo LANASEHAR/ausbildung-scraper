@@ -1,0 +1,29 @@
+name: Send Ausbildung Emails (SMTP)
+
+on:
+  schedule:
+    - cron: '15 */2 * * *' # Toutes les 2 heures
+  workflow_dispatch:       # Permet de le lancer manuellement en 1 clic
+
+jobs:
+  send-emails:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Send pending emails via Gmail SMTP
+        env:
+          GOOGLE_SHEET_WEBHOOK_URL: ${{ secrets.GOOGLE_SHEET_WEBHOOK_URL }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          GMAIL_USER: "essaouafhalima@gmail.com"
+          BATCH_LIMIT: "80"
+        run: python send_emails_smtp.py
