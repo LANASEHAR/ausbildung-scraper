@@ -54,7 +54,7 @@ REGION_PRIORITY = [
     ("West-Niedersachsen & französisch-deutscher Grenzraum", 2, ("west-niedersachsen","westniedersachsen","niedersachsen","osnabrück","osnabrueck","emsland","lingen","papenburg","meppen","cloppenburg","vechta","oldenburg","ammerland","grafschaft bentheim","nordhorn","aurich","leer","saarland","saarbrücken","saarbruecken","rheinland-pfalz","trier","kaiserslautern","koblenz","landau","zweibrücken","zweibruecken","kehl","ortenau")),
 ]
 PRIMARY_SOURCE_DOMAINS=["ihk-lehrstellenboerse.de","arbeitsagentur.de/jobsuche","meine-ausbildung-in-niedersachsen.de","ausbildung.nrw","meine-ausbildung.de","ihk-ausbildungsatlas.de","ausbildungsatlas.ihk.de","ausbildungsatlas.unikam.de"]
-SECTOR_SOURCE_DOMAINS=["yourfirm.de","hotelcareer.de","hogapage.de","dehoga.de/ausbildung","systemgastronomie-ausbildung.de","azubiyo.de"]
+SECTOR_SOURCE_DOMAINS=["yourfirm.de","logistikmitarbeiter.de","hotelcareer.de","hogapage.de","gastgebervonmorgen.de","dehoga.de/ausbildung","systemgastronomie-ausbildung.de","azubiyo.de"]
 ALL_SOURCE_DOMAINS=PRIMARY_SOURCE_DOMAINS+SECTOR_SOURCE_DOMAINS
 ROLE_SEARCH_TERMS={
 "Hotelfachfrau / Hotelkauffrau":'"Hotelfachfrau" OR "Hotelkauffrau" OR "Hotelfachmann" OR "Hotelkaufmann"',
