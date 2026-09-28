@@ -135,15 +135,15 @@ def clean(value):
     """Normalize arbitrary scraped values into compact plain text."""
     if value is None:
         return ""
-    return re.sub(r"\\s+", " ", str(value)).strip()
+    return re.sub(r"\s+", " ", str(value)).strip()
 
 
 def normalize_obfuscated_email(value):
     """Normalize common public email obfuscations such as '[at]' and '[dot]'."""
     text = str(value or "")
-    text = re.sub(r"\\s*(?:\\[|\\(|\\{)\\s*(?:at|ät)\\s*(?:\\]|\\)|\\})\\s*", "@", text, flags=re.I)
-    text = re.sub(r"\\s+(?:at|ät)\\s+", "@", text, flags=re.I)
-    text = re.sub(r"\\s*(?:\\[|\\(|\\{)\\s*(?:dot|punkt)\\s*(?:\\]|\\)|\\})\\s*", ".", text, flags=re.I)
+    text = re.sub(r"\s*(?:\[|\(|\{)\s*(?:at|ät)\s*(?:\]|\)|\})\s*", "@", text, flags=re.I)
+    text = re.sub(r"\s+(?:at|ät)\s+", "@", text, flags=re.I)
+    text = re.sub(r"\s*(?:\[|\(|\{)\s*(?:dot|punkt)\s*(?:\]|\)|\})\s*", ".", text, flags=re.I)
     return text
 
 
