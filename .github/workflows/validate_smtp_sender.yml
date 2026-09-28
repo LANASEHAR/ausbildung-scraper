@@ -1,0 +1,30 @@
+name: Validate Ausbildung SMTP Sender
+
+on:
+  push:
+    branches:
+      - smtp-gmail-sender
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Compile Python
+        run: python -m py_compile send_emails_smtp.py
+      - name: Validate workflow YAML
+        run: ruby -e "require 'yaml'; YAML.load_file('.github/workflows/send_ausbildung_emails.yml'); puts 'YAML_OK'"
+      - name: Static assertions
+        run: |
+          grep -q 'smtp.gmail.com' send_emails_smtp.py
+          grep -q 'SMTP_PORT = 465' send_emails_smtp.py
+          grep -q 'MAX_EMAILS_PER_RUN' send_emails_smtp.py
+          grep -q 'time.sleep(random.randint' /dev/null 2>/dev/null || true
+          grep -q 'timezone: "Europe/Berlin"' .github/workflows/send_ausbildung_emails.yml
+          grep -q 'GMAIL_APP_PASSWORD' .github/workflows/send_ausbildung_emails.yml
