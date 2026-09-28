@@ -15,7 +15,7 @@ on:
         type: boolean
 
   schedule:
-    - cron: "30 8 * * 1-5"
+    - cron: "0 * * * *"
       timezone: "Europe/Berlin"
 
 permissions:
@@ -76,7 +76,7 @@ jobs:
           GOOGLE_SHEET_WEBHOOK_URL: ${{ secrets.GOOGLE_SHEET_WEBHOOK_URL }}
           MAX_EMAILS_PER_RUN: ${{ github.event.inputs.max_emails || '25' }}
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
-          SMTP_DAILY_SAFETY_CAP: "100"
+          SMTP_DAILY_SAFETY_CAP: "500"
         run: |
           if [ "${MAX_EMAILS_PER_RUN}" -lt 1 ] || [ "${MAX_EMAILS_PER_RUN}" -gt 25 ]; then
             echo "max_emails must be between 1 and 25"
