@@ -25,7 +25,7 @@
 const CONFIG={
   NOM:"Halima Essaouaf", EMAIL:"essaouafhalima@gmail.com", TEL:"+212619968131",
   LINKEDIN:"linkedin.com/in/halima-essaouaf-1b4b81202", NOM_ONGLET:"Ausbildung",
-  BATCH_LIMIT:100, DELAI_ENTRE_EMAILS_MS:250, DELAI_RELANCE_H:48, MAX_EXECUTION_MS:5*60*1000,
+  BATCH_LIMIT:100, DELAI_ENTRE_EMAILS_MS:100, DELAI_RELANCE_H:48, MAX_EXECUTION_MS:5*60*1000,
   CV_FOLDER_NAME:"New Bewerbung",
   CV_MAPPING:{
     hotelfachfrau:"Bewerbungsmappe_Hotelfachfrau_Halima_Essaouaf.pdf",
@@ -860,6 +860,8 @@ function traiterAusbildungCandidatures() {
 
     // Cache des CV pour éviter de relire Drive 30 fois.
     const cvCache = {};
+    const pendingStatusUpdates = [];
+    const pendingDateUpdates = [];
 
     const rowIndexes = [];
     for (let i = 1; i < data.length; i++) {
@@ -871,22 +873,35 @@ function traiterAusbildungCandidatures() {
       if (status === "CANDIDATURE_ENVOYEE") rowIndexes.push(i);
     }
 
-    // Same ordering as the scraper/Sheet: region priority → Ausbildung
-    // priority → newest offer date. Metadata columns are populated by doPost.
+    // Nouvelles candidatures d'abord.
+    // Pour les nouvelles offres : plus récente → plus ancienne.
+    // Les priorités région/Ausbildung servent seulement en cas d'égalité.
+    // Les relances viennent ensuite, avec les plus anciennes candidatures à relancer en premier.
     rowIndexes.sort((a, b) => {
-      const regionDiff =
-        Number(data[b][COL.PRIORITE_REGION] || 0) -
-        Number(data[a][COL.PRIORITE_REGION] || 0);
-      if (regionDiff !== 0) return regionDiff;
+      const statusA = String(data[a][COL.STATUT] || "").trim();
+      const statusB = String(data[b][COL.STATUT] || "").trim();
 
-      const ausbildungDiff =
-        Number(data[b][COL.PRIORITE_AUSBILDUNG] || 0) -
-        Number(data[a][COL.PRIORITE_AUSBILDUNG] || 0);
-      if (ausbildungDiff !== 0) return ausbildungDiff;
+      if (statusA !== statusB) {
+        return statusA === "NOUVEAU" ? -1 : 1;
+      }
 
-      const dateB = new Date(data[b][COL.DATE_OFFRE] || 0).getTime() || 0;
-      const dateA = new Date(data[a][COL.DATE_OFFRE] || 0).getTime() || 0;
-      return dateB - dateA;
+      if (statusA === "NOUVEAU") {
+        const dateB = new Date(data[b][COL.DATE_OFFRE] || 0).getTime() || 0;
+        const dateA = new Date(data[a][COL.DATE_OFFRE] || 0).getTime() || 0;
+        if (dateB !== dateA) return dateB - dateA;
+
+        const regionDiff =
+          Number(data[b][COL.PRIORITE_REGION] || 0) -
+          Number(data[a][COL.PRIORITE_REGION] || 0);
+        if (regionDiff !== 0) return regionDiff;
+
+        return Number(data[b][COL.PRIORITE_AUSBILDUNG] || 0) -
+               Number(data[a][COL.PRIORITE_AUSBILDUNG] || 0);
+      }
+
+      const sentB = new Date(data[b][COL.DATE_CANDIDATURE] || 0).getTime() || 0;
+      const sentA = new Date(data[a][COL.DATE_CANDIDATURE] || 0).getTime() || 0;
+      return sentA - sentB;
     });
 
     for (const i of rowIndexes) {
@@ -949,8 +964,11 @@ function traiterAusbildungCandidatures() {
             replyTo: CONFIG.EMAIL,
           });
 
-          sheet.getRange(rowNum, COL.STATUT + 1).setValue("CANDIDATURE_ENVOYEE");
-          sheet.getRange(rowNum, COL.DATE_CANDIDATURE + 1).setValue(new Date());
+          const dateEnvoiNow = new Date();
+          data[i][COL.STATUT] = "CANDIDATURE_ENVOYEE";
+          data[i][COL.DATE_CANDIDATURE] = dateEnvoiNow;
+          pendingStatusUpdates.push([rowNum, "CANDIDATURE_ENVOYEE"]);
+          pendingDateUpdates.push([rowNum, dateEnvoiNow]);
 
           compteur++;
           emailsEnvoyesCetteExecution.add(emailCible);
@@ -1000,8 +1018,11 @@ function traiterAusbildungCandidatures() {
             replyTo: CONFIG.EMAIL,
           });
 
-          sheet.getRange(rowNum, COL.STATUT + 1).setValue("RELANCE_EFFECTUEE");
-          sheet.getRange(rowNum, COL.DATE_RELANCE + 1).setValue(new Date());
+          const dateRelanceNow = new Date();
+          data[i][COL.STATUT] = "RELANCE_EFFECTUEE";
+          data[i][COL.DATE_RELANCE] = dateRelanceNow;
+          pendingStatusUpdates.push([rowNum, "RELANCE_EFFECTUEE"]);
+          pendingDateUpdates.push([rowNum, dateRelanceNow]);
 
           compteur++;
           emailsEnvoyesCetteExecution.add(emailCible);
@@ -1016,6 +1037,30 @@ function traiterAusbildungCandidatures() {
           Logger.log("❌ ERREUR RELANCE ligne " + rowNum + " / " + emailCible + ": " + err.toString());
         }
       }
+    }
+
+    // Écritures Sheet regroupées en fin de run pour réduire fortement les accès API.
+    if (pendingStatusUpdates.length) {
+      const statusValues = data.slice(1).map(row => [row[COL.STATUT] || ""]);
+      const dateCandidatureValues = data.slice(1).map(row => [row[COL.DATE_CANDIDATURE] || ""]);
+      const dateRelanceValues = data.slice(1).map(row => [row[COL.DATE_RELANCE] || ""]);
+
+      for (const [rowNum, status] of pendingStatusUpdates) {
+        statusValues[rowNum - 2] = [status];
+      }
+      for (const [rowNum, dateValue] of pendingDateUpdates) {
+        const idx = rowNum - 2;
+        const status = String(data[rowNum - 1][COL.STATUT] || "").trim();
+        if (status === "CANDIDATURE_ENVOYEE") {
+          dateCandidatureValues[idx] = [dateValue];
+        } else if (status === "RELANCE_EFFECTUEE") {
+          dateRelanceValues[idx] = [dateValue];
+        }
+      }
+
+      sheet.getRange(2, COL.STATUT + 1, statusValues.length, 1).setValues(statusValues);
+      sheet.getRange(2, COL.DATE_CANDIDATURE + 1, dateCandidatureValues.length, 1).setValues(dateCandidatureValues);
+      sheet.getRange(2, COL.DATE_RELANCE + 1, dateRelanceValues.length, 1).setValues(dateRelanceValues);
     }
 
     Logger.log("FIN — " + compteur + " email(s) envoyé(s) / tentatives autorisées: " + limite);
