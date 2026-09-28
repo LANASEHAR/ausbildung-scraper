@@ -26,7 +26,7 @@ SIGNATURE_PHONE = "+212 619 968 131"
 SIGNATURE_LINKEDIN = "linkedin.com/in/halima-essaouaf-1b4b81202"
 
 MAX_EMAILS_PER_RUN = max(1, min(int(os.environ.get("MAX_EMAILS_PER_RUN", "25")), 25))
-SMTP_DAILY_SAFETY_CAP = max(1, int(os.environ.get("SMTP_DAILY_SAFETY_CAP", "100")))
+SMTP_DAILY_SAFETY_CAP = max(1, min(int(os.environ.get("SMTP_DAILY_SAFETY_CAP", "500")), 500))
 MIN_DELAY_SECONDS = 40
 MAX_DELAY_SECONDS = 60
 HTTP_TIMEOUT = 90
