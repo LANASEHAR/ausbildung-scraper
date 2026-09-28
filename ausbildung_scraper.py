@@ -130,6 +130,49 @@ def make_session(referer=None):
         session.headers["Referer"] = referer
     return session
 
+
+def clean(value):
+    """Normalize arbitrary scraped values into compact plain text."""
+    if value is None:
+        return ""
+    return re.sub(r"\\s+", " ", str(value)).strip()
+
+
+def normalize_obfuscated_email(value):
+    """Normalize common public email obfuscations such as '[at]' and '[dot]'."""
+    text = str(value or "")
+    text = re.sub(r"\\s*(?:\\[|\\(|\\{)\\s*(?:at|ät)\\s*(?:\\]|\\)|\\})\\s*", "@", text, flags=re.I)
+    text = re.sub(r"\\s+(?:at|ät)\\s+", "@", text, flags=re.I)
+    text = re.sub(r"\\s*(?:\\[|\\(|\\{)\\s*(?:dot|punkt)\\s*(?:\\]|\\)|\\})\\s*", ".", text, flags=re.I)
+    return text
+
+
+def first_email(value):
+    """Return the first syntactically valid email found in arbitrary text."""
+    normalized = normalize_obfuscated_email(value)
+    for candidate in EMAIL_RE.findall(normalized):
+        email = valid_email(candidate)
+        if email:
+            return email
+    return ""
+
+
+CONTACT_WORDS = (
+    "kontakt", "contact", "impressum", "ansprechpartner", "karriere", "career",
+    "bewerbung", "bewerben", "jobs", "job", "ausbildung", "personal", "hr",
+    "recruit", "recruiting", "human resources", "team",
+)
+
+BAD_SITE_DOMAINS = {
+    "arbeitsagentur.de", "azubiyo.de", "yourfirm.de", "hotelcareer.de",
+    "hogapage.de", "dehoga.de", "systemgastronomie-ausbildung.de",
+    "logistikmitarbeiter.de", "gastgebervonmorgen.de", "ihk-lehrstellenboerse.de",
+    "ihk-ausbildungsatlas.de", "ausbildungsatlas.ihk.de", "ausbildungsatlas.unikam.de",
+    "meine-ausbildung.de", "meine-ausbildung-in-niedersachsen.de", "ausbildung.nrw",
+    "indeed.com", "stepstone.de", "linkedin.com", "kununu.com", "xing.com",
+    "jobware.de", "meinestadt.de", "google.com", "bing.com", "duckduckgo.com",
+}
+
 EMAIL_RE = re.compile(r"(?<![A-Z0-9._%+\-])([A-Z0-9._%+\-]+@[A-Z0-9.-]+\.[A-Z]{2,63})(?![A-Z0-9._%+\-])", re.I)
 JOB_LINK_RE = re.compile(r"/jobsuche/jobdetail/", re.I)
 BAD_EMAIL_DOMAINS = {
@@ -422,6 +465,10 @@ def _iter_ba_links():
                 batch = api_search_page(session, query, page)
             except requests.RequestException as exc:
                 print(f"[!] BA API recherche échouée {query} page {page}: {exc}")
+                empty_pages += 1
+                if empty_pages >= 2:
+                    print(f"[!] BA API: abandon de la requête '{query}' après 2 pages en erreur.")
+                    break
                 page += 1
                 continue
 
