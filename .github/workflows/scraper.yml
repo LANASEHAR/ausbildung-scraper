@@ -1,4 +1,4 @@
-name: Ausbildung Job Scraper
+name: Ausbildung Job Scraper + Email Search
 
 on:
   schedule:
@@ -48,6 +48,7 @@ jobs:
           import daily_runner
           assert hasattr(scraper, "iter_collected_links")
           assert hasattr(scraper, "scrape_details")
+          assert hasattr(scraper, "enrich_missing_emails")
           assert hasattr(daily_runner, "process_batch")
           assert os.environ.get("GOOGLE_SHEET_WEBHOOK_URL"), "GOOGLE_SHEET_WEBHOOK_URL is missing"
           print("Preflight OK")
