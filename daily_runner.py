@@ -11,6 +11,7 @@ def process_batch(links, batch_number):
 
     jobs = scraper.scrape_details(links)
     jobs = scraper.prioritize_jobs(jobs)
+    jobs = scraper.enrich_missing_emails(jobs)
 
     if not jobs:
         print(f"[-] BATCH {batch_number}: aucun poste ciblé après filtrage.")
@@ -80,8 +81,8 @@ def main():
         print("[OK] Budget temps atteint: arrêt propre après conservation des batches déjà envoyés.")
     else:
         print("[OK] Toutes les sources disponibles ont été parcourues.")
-    print("[OK] Les offres sans email restent dans le Sheet pour Email Enrichment.")
-    print("[OK] Run terminé sans deep-search doublonné.")
+    print("[OK] Recherche des emails intégrée au même run du scraper.")
+    print("[OK] Run terminé.")
 
 
 if __name__ == "__main__":
