@@ -1456,51 +1456,132 @@ def crawl_verified_site(site):
 
 
 def search_company_web(company, location=""):
+    """Find and verify the employer site, then return one plausible public email."""
     company_clean = normalize_company(company)
     if not company_clean or company_clean in {"à vérifier", "entreprise non indiquée"}:
         return "", ""
+
     queries = [
         f'"{company_clean}" official website',
         f'"{company_clean}" Kontakt Impressum',
+        f'"{company_clean}" Karriere Ausbildung Kontakt',
+        f'"{company_clean}" Bewerbung E-Mail',
+        f'"{company_clean}" Ansprechpartner E-Mail',
     ]
+
     session = make_session()
     candidates = []
+    seen = set()
+
     for query in queries:
+        if scrape_time_exhausted():
+            break
         for engine in ("bing", "ddg"):
+            if scrape_time_exhausted():
+                break
             try:
-                results = search_engine_bing(session, query) if engine == "bing" else search_engine_duckduckgo(session, query)
+                results = (
+                    search_engine_bing(session, query)
+                    if engine == "bing"
+                    else search_engine_duckduckgo(session, query)
+                )
             except requests.RequestException:
                 continue
+
             for href, title, snippet in results[:DEEP_SEARCH_MAX_SEARCH_RESULTS]:
                 score = candidate_score(href, title, snippet, company_clean)
-                if score > 0:
-                    candidates.append((score, href))
-            time.sleep(random.uniform(0.1, 0.25))
+                if score <= 0:
+                    continue
+                host = host_of(href)
+                key = (host, href)
+                if key in seen:
+                    continue
+                seen.add(key)
+                candidates.append((score, href))
 
-    # Search snippets are ONLY used to find a candidate site.
-    # Emails are accepted only after the real site is opened and verified.
+            time.sleep(random.uniform(*DEEP_SEARCH_DELAY))
+
+    # Search-engine results identify candidate sites only.
+    # The email itself is accepted only after the actual site is opened and verified.
     seen_hosts = set()
     for _, href in sorted(candidates, key=lambda x: x[0], reverse=True):
+        if scrape_time_exhausted():
+            break
         host = host_of(href)
         if not host or host in seen_hosts:
             continue
         seen_hosts.add(host)
+
         site, homepage_email = verify_official_site(href, company_clean)
         if not site:
             continue
-        email = homepage_email or crawl_verified_site(site)
-        return email, site
+
+        email = plausible_public_email(homepage_email, company_clean)
+        if not email:
+            email = plausible_public_email(crawl_verified_site(site), company_clean)
+
+        if email:
+            return email, site
+
     return "", ""
 
 
 def enrich_missing_emails(jobs):
-    """Legacy in-memory enrichment.
+    """Enrich missing employer emails inside the same scraper run.
 
-    The production workflow now performs this step in email_enrichment.py after
-    the offers are already in Sheets. That workflow groups rows by normalized
-    company, so the same company is searched once and the verified result is
-    copied to every matching offer.
+    Companies are deduplicated within the batch, searched in parallel, and the
+    verified result is copied to every matching offer. Search results themselves
+    are never treated as email sources.
     """
+    missing = [
+        job for job in jobs
+        if not job.get("emails_rh") and clean(job.get("entreprise", ""))
+    ]
+    if not missing:
+        return jobs
+
+    groups = {}
+    for job in missing:
+        company = clean(job.get("entreprise", ""))
+        key = normalize_company(company)
+        if not key:
+            continue
+        groups.setdefault(key, {
+            "company": company,
+            "location": clean(job.get("lieu", "")),
+            "jobs": [],
+        })["jobs"].append(job)
+
+    if not groups:
+        return jobs
+
+    print(f"[*] Email search intégré: {len(groups)} entreprises uniques à vérifier.")
+
+    def enrich_group(group):
+        if scrape_time_exhausted():
+            return group, "", ""
+        try:
+            email, site = search_company_web(group["company"], group["location"])
+            return group, email, site
+        except Exception as exc:
+            print(f"[!] Email search erreur | {group['company']}: {exc}")
+            return group, "", ""
+
+    with ThreadPoolExecutor(max_workers=DEEP_SEARCH_WORKERS) as executor:
+        futures = [executor.submit(enrich_group, group) for group in groups.values()]
+        for future in as_completed(futures):
+            group, email, site = future.result()
+            if not email:
+                continue
+            for job in group["jobs"]:
+                job["emails_rh"] = email
+                if site:
+                    job["site_entreprise"] = site
+            print(
+                f"[OK] Email vérifié: {email} | {group['company']} "
+                f"| offres={len(group['jobs'])}"
+            )
+
     return jobs
 
 
