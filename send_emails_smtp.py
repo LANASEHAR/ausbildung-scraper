@@ -315,6 +315,16 @@ def main() -> int:
                 if dry_run:
                     subject = "[TEST SMTP] " + subject
 
+                # Reserve the row before the network send. If the runner dies after
+                # Gmail accepts the message but before the final Sheet update, the
+                # row stays "Envoi SMTP en cours" and cannot be sent twice.
+                gateway.update_status(
+                    row_number,
+                    "Envoi SMTP en cours",
+                    message=subject,
+                    cv_filename=attachment_name,
+                )
+
                 smtp.send(target, subject, body_text, body_html, attachment_name, attachment_bytes)
                 successful += 1
                 print(f"[SENT] {successful}/{len(rows)} row={row_number} target={target}")
