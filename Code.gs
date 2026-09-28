@@ -338,7 +338,8 @@ function doPost(e) {
         "relance_effectuee",
         "relance effectuée",
         "erreur smtp",
-        "erreur cv"
+        "erreur cv",
+        "envoi smtp en cours"
       ]);
 
       const sentEmails = new Set();
@@ -469,7 +470,7 @@ function doPost(e) {
           .setMimeType(ContentService.MimeType.JSON);
       }
 
-      if (!["Envoyé", "Erreur SMTP"].includes(status)) {
+      if (!["Envoyé", "Erreur SMTP", "Envoi SMTP en cours"].includes(status)) {
         return ContentService
           .createTextOutput(JSON.stringify({
             status: "error",
