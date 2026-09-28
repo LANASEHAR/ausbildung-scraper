@@ -321,7 +321,7 @@ function doPost(e) {
     // ── MODE EXPORT_SEND_QUEUE : file d'attente du moteur SMTP ─────────────
     if (rawData && rawData.action === "export_send_queue") {
       const limit = Math.min(25, Math.max(1, Number(rawData.limit || 25)));
-      const safetyCap = Math.max(1, Number(rawData.smtp_daily_safety_cap || 100));
+      const safetyCap = Math.min(500, Math.max(1, Number(rawData.smtp_daily_safety_cap || 500)));
       const nowMs = new Date().getTime();
       const cutoffMs = nowMs - (24 * 60 * 60 * 1000);
       const sentStatuses = new Set([
