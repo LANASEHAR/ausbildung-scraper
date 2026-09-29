@@ -28,12 +28,16 @@ const CONFIG={
   BATCH_LIMIT:100, DELAI_ENTRE_EMAILS_MS:100, DELAI_RELANCE_H:7*24, MAX_EXECUTION_MS:5*60*1000,
   CV_FOLDER_NAME:"New Bewerbung",
   CV_MAPPING:{
-    hotelfachfrau:"Bewerbungsmappe_Hotelfachfrau_Halima_Essaouaf.pdf",
-    systemgastronomie:"Bewerbungsmappe_Fachfrau_fuer_Systemgastronomie_Halima_Essaouaf.pdf",
+    fachverkaeufer_lebensmittel:"Bewerbungsmappe_Fachverkaeufer_Lebensmittelhandwerk_Halima_Essaouaf.pdf",
     einzelhandel:"Bewerbungsmappe_Kauffrau_im_Einzelhandel_Halima_Essaouaf.pdf",
+    koch:"Bewerbungsmappe_Koch_Koechin_Halima_Essaouaf.pdf",
+    hotelfachfrau:"Bewerbungsmappe_Hotelfachfrau_Halima_Essaouaf.pdf",
+    baecker:"Bewerbungsmappe_Baecker_Baeckerin_Halima_Essaouaf.pdf",
+    systemgastronomie:"Bewerbungsmappe_Fachfrau_fuer_Systemgastronomie_Halima_Essaouaf.pdf",
     spedition:"Bewerbungsmappe_Kauffrau_fuer_Spedition_und_Logistikdienstleistung_Halima_Essaouaf.pdf",
     handel:"Bewerbungsmappe_Kauffrau_im_Einzelhandel_Halima_Essaouaf.pdf",
-    industrie:"Bewerbungsmappe_Industriekauffrau_Halima_Essaouaf.pdf"
+    industrie:"Bewerbungsmappe_Industriekauffrau_Halima_Essaouaf.pdf",
+    buero:"Bewerbungsmappe_Kauffrau_fuer_Bueromanagement_Halima_Essaouaf.pdf"
   }
 };
 
@@ -694,7 +698,11 @@ function doPost(e) {
  */
 function detecterSpecialite(intitule,roleCible){
   const t=((intitule||"")+" "+(roleCible||"")).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+  if(t.includes("fachverkäufer")||t.includes("fachverkaeufer")||t.includes("lebensmittelhandwerk")||t.includes("fachverkäuferin")||t.includes("fachverkaeuferin")) return "fachverkaeufer_lebensmittel";
+  if(t.includes("einzelhandel")) return "einzelhandel";
+  if(t.includes("koch")||t.includes("köchin")||t.includes("koechin")) return "koch";
   if(t.includes("hotelfach")||t.includes("hotelkauffrau")||t.includes("hotelkaufmann")||t.includes("hotelmanagement")) return "hotelfachfrau";
+  if(t.includes("bäcker")||t.includes("baecker")||t.includes("bäckerei")||t.includes("baeckerei")||t.includes("konditorei")) return "baecker";
   if(t.includes("systemgastronomie")) return "systemgastronomie";
   if(t.includes("einzelhandel")) return "einzelhandel";
   if(t.includes("spedition")||t.includes("logistikdienstleistung")||t.includes("speditionskauf")) return "spedition";
@@ -716,11 +724,23 @@ function getTitreAusbildung(
 
   return ({
 
+    fachverkaeufer_lebensmittel:
+      "Fachverkäufer/in im Lebensmittelhandwerk",
+
+    einzelhandel:
+      "Kauffrau im Einzelhandel",
+
+    koch:
+      "Koch/Köchin",
+
     hotelfachfrau:
-      "Hotelfachfrau",
+      "Hotelfachmann/-frau",
+
+    baecker:
+      "Bäcker/in",
 
     systemgastronomie:
-      "Fachfrau für Systemgastronomie",
+      "Fachfrau/Fachmann für Systemgastronomie",
 
     einzelhandel:
       "Kauffrau im Einzelhandel",
@@ -778,9 +798,27 @@ function scoreCVFilename(filename, specialite) {
   const compact = name.replace(/ /g, "");
 
   const keywords = {
+    fachverkaeufer_lebensmittel: [
+      ["fachverkaeufer im lebensmittelhandwerk", 140], ["fachverkaeuferin im lebensmittelhandwerk", 140],
+      ["fachverkaeufer baeckerei", 130], ["fachverkaeuferin baeckerei", 130],
+      ["fachverkaeufer konditorei", 130], ["fachverkaeuferin konditorei", 130],
+      ["fachverkaeufer fleischerei", 130], ["fachverkaeuferin fleischerei", 130],
+      ["lebensmittelhandwerk", 90]
+    ],
+    einzelhandel: [
+      ["einzelhandel", 120], ["kauffrau im einzelhandel", 120],
+      ["kaufmann im einzelhandel", 120], ["handel", 35]
+    ],
+    koch: [
+      ["koch koechin", 135], ["koch", 120], ["koechin", 120], ["küche", 45]
+    ],
     hotelfachfrau: [
       ["hotelfachfrau", 100], ["hotelfachmann", 100],
       ["hotelkauffrau", 90], ["hotelkaufmann", 90], ["hotel", 45]
+    ],
+    baecker: [
+      ["baecker baeckerin", 135], ["baecker", 125], ["baeckerin", 125],
+      ["baeckerei", 90], ["konditorei", 80]
     ],
     systemgastronomie: [
       ["systemgastronomie", 110], ["gastronomie", 55], ["gastro", 35]
@@ -803,6 +841,10 @@ function scoreCVFilename(filename, specialite) {
     industrie: [
       ["industriekauffrau", 125], ["industriekaufmann", 125],
       ["industrie", 50]
+    ],
+    buero: [
+      ["bueromanagement", 125], ["kauffrau fuer bueromanagement", 125],
+      ["kaufmann fuer bueromanagement", 125], ["buero", 45]
     ]
   };
 
