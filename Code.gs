@@ -25,7 +25,7 @@
 const CONFIG={
   NOM:"Halima Essaouaf", EMAIL:"essaouafhalima@gmail.com", TEL:"+212619968131",
   LINKEDIN:"linkedin.com/in/halima-essaouaf-1b4b81202", NOM_ONGLET:"Ausbildung",
-  BATCH_LIMIT:95, DELAI_ENTRE_EMAILS_MS:100, DELAI_RELANCE_H:7*24, MAX_EXECUTION_MS:5*60*1000,
+  BATCH_LIMIT:95, DELAI_ENTRE_EMAILS_MS:20000, DELAI_RELANCE_H:7*24, MAX_EXECUTION_MS:5*60*1000,
   CV_FOLDER_NAME:"New Bewerbung",
   CV_MAPPING:{
     fachverkaeufer_lebensmittel:"Bewerbungsmappe_Fachverkaeufer_Lebensmittelhandwerk_Halima_Essaouaf.pdf",
@@ -1465,6 +1465,35 @@ function extrairePriorite(roleCible) {
   return "P3";
 }
 
+/**
+ * Dispatch horaire en GMT pour éviter les envois en rafale.
+ * 95 maximum / 24 h, avec la majorité des envois le matin.
+ * Aucun envoi entre 20:00 et 05:00 GMT.
+ */
+function getDispatchLimitGMT_() {
+  const hour = Number(Utilities.formatDate(new Date(), "GMT", "HH"));
+  const limitsByHour = {
+    5: 10,
+    6: 12,
+    7: 14,
+    8: 14,
+    9: 12,
+    10: 10,
+    11: 8,
+    12: 6,
+    13: 4,
+    14: 0,
+    15: 4,
+    16: 3,
+    17: 0,
+    18: 2,
+    19: 0
+  };
+  return Object.prototype.hasOwnProperty.call(limitsByHour, hour)
+    ? limitsByHour[hour]
+    : 0;
+}
+
 function traiterAusbildungCandidatures() {
   const lock = LockService.getScriptLock();
 
@@ -1495,8 +1524,14 @@ function traiterAusbildungCandidatures() {
       Logger.log("⛔ Plafond Apps Script du compte atteint : 95 envois sur 24 h.");
       return;
     }
-    const limite = Math.min(CONFIG.BATCH_LIMIT, quotaRestant, limiteCompte, APP_SCRIPT_SEND_LIMIT_24H);
-    Logger.log("📨 Quota restant détecté : " + quotaRestant + " | limite de ce run : " + limite);
+    const limiteHoraireGMT = getDispatchLimitGMT_();
+    if (limiteHoraireGMT <= 0) {
+      const heureGMT = Utilities.formatDate(new Date(), "GMT", "HH:mm");
+      Logger.log("⏸️ Aucun envoi autorisé à " + heureGMT + " GMT. Fenêtre d'envoi : 05:00–20:00 GMT.");
+      return;
+    }
+    const limite = Math.min(CONFIG.BATCH_LIMIT, limiteHoraireGMT, quotaRestant, limiteCompte, APP_SCRIPT_SEND_LIMIT_24H);
+    Logger.log("📨 Quota restant : " + quotaRestant + " | plafond 24h : " + limiteCompte + " | limite horaire GMT : " + limiteHoraireGMT + " | limite de ce run : " + limite);
     const debutExecution = Date.now();
     let compteur = 0;
 
