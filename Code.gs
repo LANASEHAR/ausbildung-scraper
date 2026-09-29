@@ -1728,7 +1728,7 @@ function traiterAusbildungCandidatures() {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // INSTALLATION DU TRIGGER HORAIRE
- — À APPELER UNE SEULE FOIS
+// — À APPELER UNE SEULE FOIS
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
