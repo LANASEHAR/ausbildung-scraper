@@ -1,17 +1,29 @@
 name: Send Ausbildung Emails (SMTP)
 
 on:
+  # Primary trigger: send automatically after the scraper finishes successfully.
+  workflow_run:
+    workflows:
+      - "Ausbildung Job Scraper + Email Search"
+    types:
+      - completed
+
+  # Backup trigger: also run independently every 2 hours.
   schedule:
-    - cron: '17 */2 * * *' # Toutes les 2 heures — décalé des heures pleines
-  workflow_dispatch:       # Permet de le lancer manuellement en 1 clic
+    - cron: '17 */2 * * *'
+
+  workflow_dispatch:
 
 jobs:
   send-emails:
+    # Never send after a failed scraper run when triggered by workflow_run.
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     concurrency:
       group: ausbildung-email-sender
       cancel-in-progress: false
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
