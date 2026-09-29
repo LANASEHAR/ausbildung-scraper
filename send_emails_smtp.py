@@ -20,9 +20,10 @@ CONFIG = {
     "WEBHOOK_URL": os.getenv("GOOGLE_SHEET_WEBHOOK_URL", ""),
     "TEL": "+212619968131",
     "LINKEDIN": "linkedin.com/in/halima-essaouaf-1b4b81202",
-    # Number of SUCCESSFUL email sends per run — not number of rows inspected.
-    "BATCH_LIMIT": int(os.getenv("BATCH_LIMIT", "80")),
-    "DELAI_ENTRE_EMAILS_SEC": 2.0,
+    # Light batch per run. The persistent rolling 24h quota is enforced by Apps Script.
+    "BATCH_LIMIT": int(os.getenv("BATCH_LIMIT", "20")),
+    "ROLLING_24H_LIMIT": int(os.getenv("ROLLING_24H_LIMIT", "100")),
+    "DELAI_ENTRE_EMAILS_SEC": 4.0,
     "FETCH_PAGE_SIZE": 500,
     "MAX_FETCH_PAGES": 10,
     "ALLOW_RETRIES_TO_REACH_TARGET": True,
@@ -335,6 +336,32 @@ def normalize_email(email: str) -> str:
     return value.replace("\\@", "@").replace("mailto:", "").strip()
 
 
+def reserver_slot_envoi() -> dict:
+    return _webhook_json(
+        "POST",
+        json_payload={
+            "action": "reserve_send",
+            "limit": CONFIG["ROLLING_24H_LIMIT"],
+        },
+        label="reserve_send",
+    )
+
+
+def liberer_slot_envoi(token: str):
+    if not token:
+        return
+    try:
+        _webhook_json(
+            "POST",
+            json_payload={"action": "release_send", "token": token},
+            label="release_send",
+        )
+    except Exception as exc:
+        # The reservation has a 30-minute TTL, so a failed release is
+        # deliberately conservative rather than risking quota overshoot.
+        print(f"⚠️ Impossible de libérer le slot {token}: {exc}")
+
+
 def mettre_a_jour_sheet(updates: list):
     if not updates:
         return
@@ -378,9 +405,10 @@ def main():
 
     target = CONFIG["BATCH_LIMIT"]
     print("🔍 Source unique des candidatures : Google Sheet")
-    print(f"🎯 Objectif : {target} e-mails effectivement envoyés.")
-    print("🔁 Si les nouvelles candidatures ne suffisent pas, des candidatures déjà envoyées éligibles au retry sont utilisées.")
-    print("🚫 Le nombre final inférieur à 80 ne provoque PAS un échec du workflow.")
+    print(f"🎯 Objectif de ce run : {target} e-mails effectivement envoyés.")
+    print(f"🛡️ Plafond persistant sur 24 h : {CONFIG['ROLLING_24H_LIMIT']} e-mails maximum via SMTP.")
+    print("🔁 Les runs restent légers ; si le quota 24 h est atteint, le run s'arrête proprement.")
+    print("🚫 Un run incomplet ne provoque PAS un échec du workflow.")
 
     cv_cache = {}
     emails_envoyes_ce_run = set()
@@ -397,6 +425,19 @@ def main():
         print("📭 Aucune candidature exploitable dans le Sheet.")
         print("🏁 Run terminé proprement : 0 email envoyé.")
         return
+
+    quota = reserver_slot_envoi()
+    if quota.get("status") != "success" or not quota.get("allowed", False):
+        print(
+            "🛑 Plafond 24 h atteint : "
+            f"{quota.get('sent_24h', '?')}/{CONFIG['ROLLING_24H_LIMIT']} emails déjà comptabilisés. "
+            "Aucun email ne sera envoyé dans ce run."
+        )
+        return
+
+    # Probe only: release immediately. Each actual SMTP send reserves its
+    # own slot immediately before sending.
+    liberer_slot_envoi(quota.get("token"))
 
     context = ssl.create_default_context()
     server = None
@@ -443,13 +484,26 @@ def main():
                 sujet, html_body = generer_email_relance(specialite)
                 nouveau_statut = "RELANCE_EFFECTUEE"
 
+            reservation = None
+            smtp_accepted = False
             try:
+                reservation = reserver_slot_envoi()
+                if reservation.get("status") != "success" or not reservation.get("allowed", False):
+                    print(
+                        "🛑 Plafond SMTP 24 h atteint pendant le run : "
+                        f"{reservation.get('sent_24h', '?')}/{CONFIG['ROLLING_24H_LIMIT']}. "
+                        "Arrêt propre."
+                    )
+                    break
+
+                token = reservation.get("token")
                 envoyer_email_smtp(
                     server, email_cible, sujet, html_body, cv_info
                 )
 
+                smtp_accepted = True
                 # SMTP a confirmé l'acceptation du message : c'est un vrai
-                # envoi réussi. On compte donc cet email immédiatement.
+                # envoi réussi. mark_sent finalise le slot réservé.
                 compteur += 1
                 emails_envoyes_ce_run.add(email_cible)
 
@@ -460,6 +514,7 @@ def main():
                         "row_index": row_index,
                         "statut": nouveau_statut,
                         "cv_utilise": cv_info["filename"],
+                        "reservation_token": token,
                     }])
                 except Exception as sheet_error:
                     # Ne jamais renvoyer un email déjà accepté par SMTP juste
@@ -473,6 +528,8 @@ def main():
                 time.sleep(CONFIG["DELAI_ENTRE_EMAILS_SEC"])
 
             except smtplib.SMTPResponseException as e:
+                if reservation and reservation.get("token") and not smtp_accepted:
+                    liberer_slot_envoi(reservation.get("token"))
                 print(
                     f"❌ Erreur SMTP ligne {row_index} ({email_cible}): "
                     f"{e.smtp_code} - {e.smtp_error}"
@@ -495,6 +552,8 @@ def main():
                     continue
 
             except Exception as e:
+                if reservation and reservation.get("token") and not smtp_accepted:
+                    liberer_slot_envoi(reservation.get("token"))
                 print(f"❌ Erreur ligne {row_index} ({email_cible}): {e}")
                 continue
 
