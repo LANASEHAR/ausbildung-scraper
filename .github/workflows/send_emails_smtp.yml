@@ -4,7 +4,7 @@ on:
   # Independent sender: it reads the Google Sheet directly.
   # It does NOT wait for or depend on the scraper workflow.
   schedule:
-    - cron: '17 */2 * * *'
+    - cron: '17 */4 * * *'
       timezone: "Etc/GMT"
 
   workflow_dispatch:
@@ -32,16 +32,18 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
-      - name: Send up to 80 real emails from the Google Sheet
+      - name: Send up to 20 real emails from the Google Sheet
         env:
           GOOGLE_SHEET_WEBHOOK_URL: ${{ secrets.GOOGLE_SHEET_WEBHOOK_URL }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           GMAIL_USER: "essaouafhalima@gmail.com"
-          BATCH_LIMIT: "80"
+          BATCH_LIMIT: "20"
+          ROLLING_24H_LIMIT: "100"
         run: |
           set -e
           echo "=== Independent SMTP sender ==="
-          echo "Schedule: every 2 hours, GMT, at minute 17"
-          echo "Target: 80 successful SMTP deliveries"
+          echo "Schedule: every 4 hours, GMT, at minute 17"
+          echo "Target: 20 successful SMTP deliveries per run"
+          echo "Persistent rolling 24h cap: 100 successful SMTP deliveries"
           echo "Source: Google Sheet"
           python -u send_emails_smtp.py
