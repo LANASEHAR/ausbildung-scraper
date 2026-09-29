@@ -180,7 +180,56 @@ function testerDoPost() {
   return result.getContent();
 }
 
-function doGet() {
+function doGet(e) {
+  // ── MODE GET_CV : le sender SMTP demande le PDF depuis Drive ────────────
+  // Le sender Python utilise GET?action=get_cv&specialite=...
+  // Retourner le PDF en base64 permet à GitHub Actions de l'attacher au mail.
+  if (e && e.parameter && e.parameter.action === "get_cv") {
+    const specialite = String(e.parameter.specialite || "").trim().toLowerCase();
+
+    if (!specialite || !CONFIG.CV_MAPPING[specialite]) {
+      return ContentService
+        .createTextOutput(JSON.stringify({
+          status: "error",
+          message: "Spécialité inconnue: " + specialite
+        }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    try {
+      const cvFile = getCV("", specialite);
+      if (!cvFile) {
+        return ContentService
+          .createTextOutput(JSON.stringify({
+            status: "error",
+            message: "Aucun CV trouvé pour " + specialite
+          }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+
+      const blob = cvFile.getBlob();
+      return ContentService
+        .createTextOutput(JSON.stringify({
+          status: "success",
+          action: "get_cv",
+          specialite: specialite,
+          filename: cvFile.getName(),
+          mime_type: blob.getContentType(),
+          base64: Utilities.base64Encode(blob.getBytes())
+        }))
+        .setMimeType(ContentService.MimeType.JSON);
+
+    } catch (error) {
+      Logger.log("[GET_CV] Erreur " + specialite + ": " + error.toString());
+      return ContentService
+        .createTextOutput(JSON.stringify({
+          status: "error",
+          message: error.toString()
+        }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+
   return ContentService
     .createTextOutput(JSON.stringify({
       status: "ok",
