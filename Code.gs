@@ -716,6 +716,7 @@ function detecterSpecialite(intitule,roleCible){
 ) return "handel";
 
   if(t.includes("industriekauf")) return "industrie";
+  if(t.includes("büromanagement")||t.includes("bueromanagement")||t.includes("kaufmann/-frau für büromanagement")||t.includes("kauffrau/kaufmann für büromanagement")) return "buero";
   return "";
 }
 function getTitreAusbildung(
@@ -744,6 +745,9 @@ function getTitreAusbildung(
 
     einzelhandel:
       "Kauffrau im Einzelhandel",
+
+    buero:
+      "Kaufmann/-frau für Büromanagement",
 
     spedition:
       "Kauffrau für Spedition und Logistikdienstleistung",
@@ -973,7 +977,7 @@ function getSignatureHTML() {
   <tr>
     <td>
       <strong style="font-size: 14px; color: #1a1a1a;">${CONFIG.NOM}</strong><br>
-      <span style="color: #666;">Bewerberin – Ausbildung Kauffrau</span><br><br>
+      <span style="color: #666;">Bewerberin – Ausbildung in Deutschland</span><br><br>
       📧 <a href="mailto:${CONFIG.EMAIL}" style="color: #1a73e8;">${CONFIG.EMAIL}</a><br>
       📞 ${CONFIG.TEL}<br>
       🔗 <a href="https://${CONFIG.LINKEDIN}" style="color: #1a73e8;">${CONFIG.LINKEDIN}</a>
@@ -1043,6 +1047,12 @@ function genererEmailCandidature(
        HOTELFACHFRAU
        ===================================================== */
 
+    fachverkaeufer_lebensmittel:
+      `Die Beratung und der Verkauf von Lebensmitteln verbinden Kundenkontakt, Service und sorgfältiges Arbeiten. Ich bringe über fünf Jahre Erfahrung in Kundenbetreuung und Vertrieb mit und möchte diese Stärke nun gezielt im Lebensmittelhandwerk einsetzen und mit einer anerkannten Ausbildung in Deutschland verbinden.`,
+
+    koch:
+      `Die Arbeit mit Menschen, Organisation und Service gehört bereits zu meiner Berufserfahrung. Ich möchte diese Erfahrung nun in der Küche weiterentwickeln, professionelle Abläufe erlernen und eine anerkannte Ausbildung als Koch/Köchin in Deutschland absolvieren.`,
+
     hotelfachfrau:
 
       `Die Hotellerie ist mir bereits aus meiner beruflichen Erfahrung vertraut. Bei HBX Group / Hotelbeds betreute ich ein internationales B2B-Kundenportfolio im Bereich Hotellerie und Travel im Nahen Osten und arbeitete täglich mit Geschäftspartnern auf Arabisch, Französisch und Englisch. Insgesamt bringe ich über fünf Jahre Erfahrung in Kundenbetreuung, Vertrieb und kaufmännischen Abläufen mit. Diese Erfahrung möchte ich nun mit einer Ausbildung in Deutschland und einem anerkannten IHK-Abschluss weiterentwickeln.`,
@@ -1090,7 +1100,13 @@ function genererEmailCandidature(
 
     industrie:
 
-      `Durch über fünf Jahre Berufserfahrung bringe ich bereits praktische Kenntnisse in kaufmännischer Organisation, Beschaffung, Auftragsabwicklung und Kundenbetreuung mit. Aktuell arbeite ich mit Lieferanten, Beständen, Rechnungen, Excel und dem ERP-System Sage. Ich möchte diese Praxiserfahrung nun mit den kaufmännischen Prozessen eines deutschen Unternehmens verbinden und dabei einen anerkannten IHK-Abschluss erwerben.`
+      `Durch über fünf Jahre Berufserfahrung bringe ich bereits praktische Kenntnisse in kaufmännischer Organisation, Beschaffung, Auftragsabwicklung und Kundenbetreuung mit. Aktuell arbeite ich mit Lieferanten, Beständen, Rechnungen, Excel und dem ERP-System Sage. Ich möchte diese Praxiserfahrung nun mit den kaufmännischen Prozessen eines deutschen Unternehmens verbinden und dabei einen anerkannten IHK-Abschluss erwerben.`,
+
+    baecker:
+      `Sorgfalt, Kundenorientierung und zuverlässiges Arbeiten gehören zu meinen bisherigen beruflichen Erfahrungen. Die Verbindung von handwerklicher Herstellung und direktem Kundenkontakt im Bäckerhandwerk spricht mich besonders an. Diese Stärken möchte ich durch eine fundierte Ausbildung in Deutschland weiterentwickeln.`,
+
+    buero:
+      `Ich bringe über fünf Jahre Erfahrung in Kundenbetreuung, Vertrieb und kaufmännischen Abläufen mit. Organisation, Kommunikation und strukturierte Bearbeitung gehören zu meinem Arbeitsalltag. Diese Erfahrung möchte ich nun mit einer anerkannten Ausbildung für Büromanagement in Deutschland vertiefen.`
 
   })[specialite] ||
 
