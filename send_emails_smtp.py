@@ -308,10 +308,11 @@ def main():
                 })
                 print(f"✅ [{type_envoi}] #{compteur}/{CONFIG['BATCH_LIMIT']} → {email_cible}")
 
-                # Sauvegarde intermédiaire toutes les 20 lignes pour ne rien perdre
-                if len(updates) >= 20:
-                    mettre_a_jour_sheet(updates)
-                    updates.clear()
+                # Marquer immédiatement chaque succès dans le Sheet.
+                # Ainsi, si GitHub relance le workflow après une panne réseau,
+                # les emails déjà envoyés ne sont pas reproposés comme "NOUVEAU".
+                mettre_a_jour_sheet(updates)
+                updates.clear()
 
                 time.sleep(CONFIG["DELAI_ENTRE_EMAILS_SEC"])
 
