@@ -341,9 +341,80 @@ function sortOffers(sheet) {
 }
 
 function doPost(e) {
+  // ── MODE GET_CV : le sender SMTP demande le PDF depuis Drive ─────────────
+  // Le sender utilise POST pour éviter les 404 intermittents observés sur GET.
+  let rawData;
+  try {
+    rawData = JSON.parse(e.postData.contents);
+  } catch (error) {
+    return ContentService
+      .createTextOutput(JSON.stringify({
+        status: "error",
+        message: "JSON invalide: " + error.toString()
+      }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  if (rawData && rawData.action === "get_cv") {
+    const specialite = String(rawData.specialite || "").trim().toLowerCase();
+
+    if (!specialite || !CONFIG.CV_MAPPING[specialite]) {
+      return ContentService
+        .createTextOutput(JSON.stringify({
+          status: "error",
+          message: "Spécialité inconnue: " + specialite
+        }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    try {
+      const cvFile = getCV("", specialite);
+      if (!cvFile) {
+        return ContentService
+          .createTextOutput(JSON.stringify({
+            status: "error",
+            message: "Aucun CV trouvé pour " + specialite
+          }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+
+      const blob = cvFile.getBlob();
+      return ContentService
+        .createTextOutput(JSON.stringify({
+          status: "success",
+          action: "get_cv",
+          specialite: specialite,
+          filename: cvFile.getName(),
+          mime_type: blob.getContentType(),
+          base64: Utilities.base64Encode(blob.getBytes())
+        }))
+        .setMimeType(ContentService.MimeType.JSON);
+
+    } catch (error) {
+      Logger.log("[GET_CV_POST] Erreur " + specialite + ": " + error.toString());
+      return ContentService
+        .createTextOutput(JSON.stringify({
+          status: "error",
+          message: error.toString()
+        }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+  }
+
   // Parse the request BEFORE taking the script lock. JSON parsing does not touch
   // the spreadsheet and therefore should never block other webhook executions.
-  let rawData;
+  let rawData2;
+  try {
+    rawData2 = rawData;
+  } catch (error) {
+    return ContentService
+      .createTextOutput(JSON.stringify({
+        status: "error",
+        message: "JSON invalide: " + error.toString()
+      }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  rawData = rawData2;
   try {
     rawData = JSON.parse(e.postData.contents);
   } catch (error) {
