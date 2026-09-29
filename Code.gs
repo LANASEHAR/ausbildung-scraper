@@ -584,25 +584,24 @@ function doPost(e) {
         const cvUtilise = String(update.cv_utilise || "").trim();
         const now = new Date();
 
-        allData[rowIndex][COL.STATUT] = status;
+        // IMPORTANT: write only the cells changed by the email sender.
+        // Never rewrite the whole Sheet here, so a scraper run happening at
+        // the same time cannot have its newly enriched rows overwritten.
+        sheet.getRange(rowNumber, COL.STATUT + 1).setValue(status);
 
         if (cvUtilise) {
-          allData[rowIndex][COL.CV_UTILISE] = cvUtilise;
+          sheet.getRange(rowNumber, COL.CV_UTILISE + 1).setValue(cvUtilise);
         }
 
         if (status === "CANDIDATURE_ENVOYEE") {
-          allData[rowIndex][COL.DATE_CANDIDATURE] = now;
+          sheet.getRange(rowNumber, COL.DATE_CANDIDATURE + 1).setValue(now);
         } else {
-          allData[rowIndex][COL.DATE_RELANCE] = now;
+          sheet.getRange(rowNumber, COL.DATE_RELANCE + 1).setValue(now);
           const currentCount = Number(allData[rowIndex][COL.NOMBRE_RELANCES] || 0);
-          allData[rowIndex][COL.NOMBRE_RELANCES] = currentCount + 1;
+          sheet.getRange(rowNumber, COL.NOMBRE_RELANCES + 1).setValue(currentCount + 1);
         }
 
         updated++;
-      }
-
-      if (updated > 0) {
-        sheet.getRange(1, 1, allData.length, allData[0].length).setValues(allData);
       }
 
       return ContentService
