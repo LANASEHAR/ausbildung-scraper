@@ -182,9 +182,11 @@ def generer_email_relance(specialite: str):
 def recuperer_offres_en_attente(offset=0):
     # Fetch a large candidate pool because many rows may be unusable
     # (invalid email, missing CV, unknown specialization, etc.).
-    resp = requests.get(
+    # get_pending est implémenté dans doPost(e) côté Google Apps Script.
+    # Utiliser POST ici est essentiel : un GET appelle seulement doGet().
+    resp = requests.post(
         CONFIG["WEBHOOK_URL"],
-        params={
+        json={
             "action": "get_pending",
             "limit": CONFIG["FETCH_PAGE_SIZE"],
             "offset": offset,
