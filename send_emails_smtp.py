@@ -28,16 +28,25 @@ CONFIG = {
 }
 
 TITRES_AUSBILDUNG = {
-    "hotelfachfrau": "Hotelfachfrau",
-    "systemgastronomie": "Fachfrau für Systemgastronomie",
+    "fachverkaeufer_lebensmittel": "Fachverkäufer/in im Lebensmittelhandwerk",
     "einzelhandel": "Kauffrau im Einzelhandel",
+    "koch": "Koch/Köchin",
+    "hotelfachfrau": "Hotelfachmann/-frau",
+    "baecker": "Bäcker/in",
+    "systemgastronomie": "Fachfrau/Fachmann für Systemgastronomie",
     "spedition": "Kauffrau für Spedition und Logistikdienstleistung",
     "handel": "Kauffrau im Groß- und Außenhandelsmanagement",
-    "industrie": "Industriekauffrau",
-}
+    "industrie": "Industriekaufmann/-frau",
+    "buero": "Kaufmann/-frau für Büromanagement",
+  }
 
 MOTIVATIONS = {
-    "hotelfachfrau": (
+    "fachverkaeufer_lebensmittel": (
+        "Die Beratung und der Verkauf von Lebensmitteln verbinden Kundenkontakt, Service und sorgfältiges Arbeiten. "
+        "Ich bringe über fünf Jahre Erfahrung in Kundenbetreuung und Vertrieb mit und möchte diese Stärke nun "
+        "gezielt im Lebensmittelhandwerk einsetzen und mit einer anerkannten Ausbildung in Deutschland verbinden."
+    ),
+    "einzelhandel": (\n    "hotelfachfrau": (
         "Die Hotellerie ist mir bereits aus meiner beruflichen Erfahrung vertraut. "
         "Bei HBX Group / Hotelbeds betreute ich ein internationales B2B-Kundenportfolio "
         "im Bereich Hotellerie und Travel im Nahen Osten und arbeitete täglich mit "
@@ -87,6 +96,21 @@ MOTIVATIONS = {
         "Ich möchte diese Praxiserfahrung nun mit den kaufmännischen Prozessen eines deutschen "
         "Unternehmens verbinden und dabei einen anerkannten IHK-Abschluss erwerben."
     ),
+    "koch": (
+        "Die Arbeit mit Menschen, Organisation und Service gehört bereits zu meiner Berufserfahrung. "
+        "Ich möchte diese Erfahrung nun in der Küche weiterentwickeln, professionelle Abläufe erlernen "
+        "und eine anerkannte Ausbildung als Koch/Köchin in Deutschland absolvieren."
+    ),
+    "baecker": (
+        "Sorgfalt, Kundenorientierung und zuverlässiges Arbeiten gehören zu meinen bisherigen beruflichen Erfahrungen. "
+        "Die Verbindung von handwerklicher Herstellung und direktem Kundenkontakt im Bäckerhandwerk spricht mich besonders an. "
+        "Diese Stärken möchte ich durch eine fundierte Ausbildung in Deutschland weiterentwickeln."
+    ),
+    "buero": (
+        "Ich bringe über fünf Jahre Erfahrung in Kundenbetreuung, Vertrieb und kaufmännischen Abläufen mit. "
+        "Organisation, Kommunikation und strukturierte Bearbeitung gehören zu meinem Arbeitsalltag. "
+        "Diese Erfahrung möchte ich nun mit einer anerkannten Ausbildung für Büromanagement in Deutschland vertiefen."
+    ),
 }
 
 DEFAULT_MOTIVATION = (
@@ -102,18 +126,32 @@ DEFAULT_MOTIVATION = (
 
 def detecter_specialite(intitule: str, role_cible: str) -> str:
     t = f"{intitule or ''} {role_cible or ''}".lower()
-    if any(k in t for k in ["hotelfach", "hotelkauffrau", "hotelkaufmann", "hotelmanagement"]):
-        return "hotelfachfrau"
-    if "systemgastronomie" in t:
-        return "systemgastronomie"
+    if any(k in t for k in [
+        "fachverkäufer im lebensmittelhandwerk", "fachverkaeufer im lebensmittelhandwerk",
+        "fachverkäuferin im lebensmittelhandwerk", "fachverkaeuferin im lebensmittelhandwerk",
+        "fachverkäufer bäckerei", "fachverkaeufer baeckerei",
+        "fachverkäufer konditorei", "fachverkaeufer konditorei",
+        "fachverkäufer fleischerei", "fachverkaeufer fleischerei"
+    ]):
+        return "fachverkaeufer_lebensmittel"
     if "einzelhandel" in t:
         return "einzelhandel"
+    if any(k in t for k in ["koch", "köchin", "koechin", "koch/köchin", "koch/koechin"]):
+        return "koch"
+    if any(k in t for k in ["hotelfach", "hotelkauffrau", "hotelkaufmann", "hotelmanagement"]):
+        return "hotelfachfrau"
+    if any(k in t for k in ["bäcker", "baecker", "bäckerei", "baeckerei", "konditorei"]):
+        return "baecker"
+    if "systemgastronomie" in t:
+        return "systemgastronomie"
     if any(k in t for k in ["spedition", "logistikdienstleistung", "speditionskauf"]):
         return "spedition"
     if any(k in t for k in ["gross", "groß", "aussenhandel", "außenhandel", "grosshandel", "großhandel"]):
         return "handel"
     if "industriekauf" in t:
         return "industrie"
+    if any(k in t for k in ["büromanagement", "bueromanagement", "kaufmann/-frau für büromanagement", "kauffrau/kaufmann für büromanagement"]):
+        return "buero"
     return ""
 
 
