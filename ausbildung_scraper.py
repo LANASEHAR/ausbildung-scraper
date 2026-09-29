@@ -192,6 +192,7 @@ BAD_SITE_DOMAINS = {
     "hogapage.de", "dehoga.de", "systemgastronomie-ausbildung.de",
     "logistikmitarbeiter.de", "gastgebervonmorgen.de", "ihk-lehrstellenboerse.de",
     "ihk-ausbildungsatlas.de", "ausbildungsatlas.ihk.de", "ausbildungsatlas.unikam.de",
+    "derausbildungsatlas.de", "meine-ausbildung-in-deutschland.de", "ihk-boerse.de",
     "meine-ausbildung.de", "meine-ausbildung-in-niedersachsen.de", "ausbildung.nrw",
     "indeed.com", "stepstone.de", "linkedin.com", "kununu.com", "xing.com",
     "jobware.de", "meinestadt.de", "google.com", "bing.com", "duckduckgo.com",
