@@ -798,7 +798,16 @@ function scoreCVFilename(filename, specialite) {
 }
 
 function getCV(intitule, roleCible){
-  const specialite = detecterSpecialite(intitule, roleCible);
+  let specialite = detecterSpecialite(intitule, roleCible);
+
+  // Direct specialty lookup is used by the SMTP get_cv endpoint.
+  // This avoids depending on detecterSpecialite() recognizing the bare key
+  // "handel", "industrie", etc.
+  const directSpecialite = String(roleCible || "").trim().toLowerCase();
+  if (!specialite && CONFIG.CV_MAPPING[directSpecialite]) {
+    specialite = directSpecialite;
+  }
+
   const filename = CONFIG.CV_MAPPING[specialite];
   if (!specialite || !filename) return null;
 
