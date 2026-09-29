@@ -20,8 +20,11 @@ CONFIG = {
     "WEBHOOK_URL": os.getenv("GOOGLE_SHEET_WEBHOOK_URL", ""),
     "TEL": "+212619968131",
     "LINKEDIN": "linkedin.com/in/halima-essaouaf-1b4b81202",
-    "BATCH_LIMIT": int(os.getenv("BATCH_LIMIT", "80")),  # Nb max d'envois par exécution GitHub
-    "DELAI_ENTRE_EMAILS_SEC": 2.0,                       # Pause anti-spam entre 2 envois SMTP
+    # Number of SUCCESSFUL email sends per run — not number of rows inspected.
+    "BATCH_LIMIT": int(os.getenv("BATCH_LIMIT", "80")),
+    "DELAI_ENTRE_EMAILS_SEC": 2.0,
+    "FETCH_PAGE_SIZE": 500,
+    "MAX_FETCH_PAGES": 10,
 }
 
 TITRES_AUSBILDUNG = {
@@ -176,10 +179,16 @@ def generer_email_relance(specialite: str):
 # COMMUNICATION AVEC GOOGLE APPS SCRIPT (SHEET + DRIVE)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def recuperer_offres_en_attente():
+def recuperer_offres_en_attente(offset=0):
+    # Fetch a large candidate pool because many rows may be unusable
+    # (invalid email, missing CV, unknown specialization, etc.).
     resp = requests.get(
         CONFIG["WEBHOOK_URL"],
-        params={"action": "get_pending", "limit": CONFIG["BATCH_LIMIT"]},
+        params={
+            "action": "get_pending",
+            "limit": CONFIG["FETCH_PAGE_SIZE"],
+            "offset": offset,
+        },
         timeout=60,
     )
     resp.raise_for_status()
@@ -210,6 +219,23 @@ def recuperer_cv_depuis_drive(specialite: str, cv_cache: dict):
     }
     cv_cache[specialite] = cv_info
     return cv_info
+
+
+def is_valid_email(email: str) -> bool:
+    """Reject malformed addresses before they ever reach Gmail SMTP."""
+    value = str(email or "").strip().lower()
+    value = value.replace("\\@", "@").replace("mailto:", "")
+    if not value or len(value) > 254:
+        return False
+    if not re.fullmatch(r"[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+", value):
+        return False
+    local, domain = value.rsplit("@", 1)
+    return ".." not in local and ".." not in domain
+
+
+def normalize_email(email: str) -> str:
+    value = str(email or "").strip().lower()
+    return value.replace("\\@", "@").replace("mailto:", "").strip()
 
 
 def mettre_a_jour_sheet(updates: list):
@@ -250,86 +276,101 @@ def main():
     if not CONFIG["APP_PASSWORD"] or not CONFIG["WEBHOOK_URL"]:
         raise RuntimeError("❌ GMAIL_APP_PASSWORD ou GOOGLE_SHEET_WEBHOOK_URL manquant dans les Secrets.")
 
+    target = CONFIG["BATCH_LIMIT"]
     print("🔍 Récupération des candidatures en attente depuis Google Sheet...")
-    items = recuperer_offres_en_attente()
-    if not items:
-        print("✅ Aucune candidature ou relance en attente.")
-        return
-
-    print(f"📋 {len(items)} ligne(s) prête(s) à être traitée(s) (limite : {CONFIG['BATCH_LIMIT']}).")
+    print(f"🎯 Objectif : {target} e-mails effectivement envoyés (pas {target} lignes).")
 
     cv_cache = {}
-    updates = []
     emails_envoyes_ce_run = set()
+    seen_rows = set()
     compteur = 0
+    fetch_offset = 0
+    pages = 0
 
     context = ssl.create_default_context()
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
         server.login(CONFIG["EMAIL"], CONFIG["APP_PASSWORD"])
 
-        for item in items:
-            if compteur >= CONFIG["BATCH_LIMIT"]:
+        while compteur < target and pages < CONFIG["MAX_FETCH_PAGES"]:
+            pages += 1
+            items = recuperer_offres_en_attente(fetch_offset)
+
+            if not items:
+                print("📭 Plus aucune ligne candidate disponible.")
                 break
 
-            row_index = item["row_index"]
-            type_envoi = item["type"]  # "INITIAL" ou "RELANCE"
-            email_cible = item["emails_rh"].strip().lower()
-            intitule = item.get("intitule", "")
-            role_cible = item.get("role_cible", "")
+            page_new_rows = 0
 
-            if email_cible in emails_envoyes_ce_run:
-                continue
-
-            specialite = detecter_specialite(intitule, role_cible)
-            if not specialite:
-                print(f"⏭️ Ligne {row_index} : spécialité non détectée ({intitule})")
-                continue
-
-            cv_info = recuperer_cv_depuis_drive(specialite, cv_cache)
-            if not cv_info:
-                print(f"⏭️ Ligne {row_index} : CV introuvable sur Drive pour '{specialite}'")
-                continue
-
-            if type_envoi == "INITIAL":
-                sujet, html_body = generer_email_candidature(specialite)
-                nouveau_statut = "CANDIDATURE_ENVOYEE"
-            else:
-                sujet, html_body = generer_email_relance(specialite)
-                nouveau_statut = "RELANCE_EFFECTUEE"
-
-            try:
-                envoyer_email_smtp(server, email_cible, sujet, html_body, cv_info)
-                compteur += 1
-                emails_envoyes_ce_run.add(email_cible)
-                updates.append({
-                    "row_index": row_index,
-                    "statut": nouveau_statut,
-                    "cv_utilise": cv_info["filename"],
-                })
-                print(f"✅ [{type_envoi}] #{compteur}/{CONFIG['BATCH_LIMIT']} → {email_cible}")
-
-                # Marquer immédiatement chaque succès dans le Sheet.
-                # Ainsi, si GitHub relance le workflow après une panne réseau,
-                # les emails déjà envoyés ne sont pas reproposés comme "NOUVEAU".
-                mettre_a_jour_sheet(updates)
-                updates.clear()
-
-                time.sleep(CONFIG["DELAI_ENTRE_EMAILS_SEC"])
-
-            except smtplib.SMTPResponseException as e:
-                print(f"❌ Erreur SMTP ligne {row_index} ({email_cible}): {e.smtp_code} - {e.smtp_error}")
-                # Si Gmail bloque pour quota journalier SMTP atteint (erreur 550 / 421), on s'arrête proprement
-                if e.smtp_code in (421, 450, 452, 550, 554):
-                    print("⛔ Limite SMTP Gmail atteinte pour le moment. Arrêt propre.")
+            for item in items:
+                if compteur >= target:
                     break
-            except Exception as e:
-                print(f"❌ Erreur ligne {row_index} ({email_cible}): {e}")
 
-    # Sauvegarde finale des statuts dans le Sheet
-    if updates:
-        mettre_a_jour_sheet(updates)
+                row_index = item.get("row_index")
+                if row_index in seen_rows:
+                    continue
+                seen_rows.add(row_index)
+                page_new_rows += 1
 
-    print(f"🏁 Terminé — {compteur} e-mail(s) envoyé(s) via SMTP.")
+                type_envoi = item.get("type", "INITIAL")
+                email_cible = normalize_email(item.get("emails_rh", ""))
+
+                if not is_valid_email(email_cible):
+                    print(f"⏭️ Ligne {row_index} : email invalide ignoré ({email_cible})")
+                    continue
+
+                if email_cible in emails_envoyes_ce_run:
+                    continue
+
+                intitule = item.get("intitule", "")
+                role_cible = item.get("role_cible", "")
+                specialite = detecter_specialite(intitule, role_cible)
+
+                if not specialite:
+                    print(f"⏭️ Ligne {row_index} : spécialité non détectée ({intitule})")
+                    continue
+
+                cv_info = recuperer_cv_depuis_drive(specialite, cv_cache)
+                if not cv_info:
+                    print(f"⏭️ Ligne {row_index} : CV introuvable sur Drive pour '{specialite}' — on passe à la suivante")
+                    continue
+
+                if type_envoi == "INITIAL":
+                    sujet, html_body = generer_email_candidature(specialite)
+                    nouveau_statut = "CANDIDATURE_ENVOYEE"
+                else:
+                    sujet, html_body = generer_email_relance(specialite)
+                    nouveau_statut = "RELANCE_EFFECTUEE"
+
+                try:
+                    envoyer_email_smtp(server, email_cible, sujet, html_body, cv_info)
+                    compteur += 1
+                    emails_envoyes_ce_run.add(email_cible)
+
+                    mettre_a_jour_sheet([{
+                        "row_index": row_index,
+                        "statut": nouveau_statut,
+                        "cv_utilise": cv_info["filename"],
+                    }])
+
+                    print(f"✅ [{type_envoi}] #{compteur}/{target} → {email_cible}")
+                    time.sleep(CONFIG["DELAI_ENTRE_EMAILS_SEC"])
+
+                except smtplib.SMTPResponseException as e:
+                    print(f"❌ Erreur SMTP ligne {row_index} ({email_cible}): {e.smtp_code} - {e.smtp_error}")
+                    if e.smtp_code in (421, 450, 452, 550, 554):
+                        print("⛔ Gmail SMTP a refusé l'envoi. Arrêt pour éviter les doublons/blocages.")
+                        return
+                except Exception as e:
+                    print(f"❌ Erreur ligne {row_index} ({email_cible}): {e}")
+
+            # If the webhook supports offset, the next page continues deeper
+            # into the Sheet. If it ignores offset, seen_rows prevents a loop.
+            if page_new_rows == 0:
+                break
+            fetch_offset += len(items)
+
+    print(f"🏁 Terminé — {compteur} e-mail(s) effectivement envoyé(s) via SMTP sur {target} demandés.")
+
 
 
 if __name__ == "__main__":
