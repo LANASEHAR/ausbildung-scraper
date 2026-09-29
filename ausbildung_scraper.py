@@ -29,29 +29,119 @@ API_RETRIES = 3
 API_BACKOFF = (2.0, 5.0, 10.0)
 
 SEARCH_QUERIES = [
-    "Hotelfachfrau Ausbildung", "Hotelfachmann Ausbildung", "Hotelkauffrau Ausbildung", "Hotelkaufmann Ausbildung",
-    "Fachfrau für Systemgastronomie Ausbildung", "Fachmann für Systemgastronomie Ausbildung",
+    # P1 — Fachverkäufer/in im Lebensmittelhandwerk + Einzelhandel
+    "Fachverkäufer im Lebensmittelhandwerk Ausbildung", "Fachverkäuferin im Lebensmittelhandwerk Ausbildung",
+    "Fachverkäufer/Fachverkäuferin im Lebensmittelhandwerk Ausbildung",
+    "Fachverkäufer Bäckerei Ausbildung", "Fachverkäuferin Bäckerei Ausbildung",
+    "Fachverkäufer Konditorei Ausbildung", "Fachverkäuferin Konditorei Ausbildung",
+    "Fachverkäufer Fleischerei Ausbildung", "Fachverkäuferin Fleischerei Ausbildung",
     "Kauffrau im Einzelhandel Ausbildung", "Kaufmann im Einzelhandel Ausbildung", "Kauffrau/Kaufmann im Einzelhandel Ausbildung",
+    # P2 — Küche
+    "Koch Ausbildung", "Köchin Ausbildung", "Koch/Köchin Ausbildung",
+    "Koch m/w/d Ausbildung", "Köchin m/w/d Ausbildung", "Ausbildung Koch Köchin",
+    # P3 — Hotellerie / Bäckerei / Systemgastronomie
+    "Hotelfachfrau Ausbildung", "Hotelfachmann Ausbildung", "Hotelfachfrau/-mann Ausbildung", "Hotelfachmann/-frau Ausbildung",
+    "Bäcker Ausbildung", "Bäckerin Ausbildung", "Bäcker/Bäckerin Ausbildung", "Bäcker/in Ausbildung",
+    "Bäckerei Ausbildung", "Konditorei Ausbildung",
+    "Fachfrau für Systemgastronomie Ausbildung", "Fachmann für Systemgastronomie Ausbildung",
+    "Fachfrau/Fachmann für Systemgastronomie Ausbildung",
+    # P4+
     "Kauffrau für Spedition und Logistikdienstleistung Ausbildung", "Kaufmann für Spedition und Logistikdienstleistung Ausbildung", "Kauffrau/Kaufmann für Spedition und Logistikdienstleistung Ausbildung",
     "Kauffrau im Groß- und Außenhandelsmanagement Ausbildung", "Kaufmann im Groß- und Außenhandelsmanagement Ausbildung", "Kauffrau/Kaufmann im Groß- und Außenhandelsmanagement Ausbildung",
     "Industriekauffrau Ausbildung", "Industriekaufmann Ausbildung", "Industriekauffrau/-mann Ausbildung",
+    "Kauffrau für Büromanagement Ausbildung", "Kaufmann für Büromanagement Ausbildung", "Kauffrau/Kaufmann für Büromanagement Ausbildung",
 ]
 
 ROLE_PRIORITY = [
-    ("Hotelfachfrau / Hotelkauffrau", 6, ("hotelfachfrau","hotelfachmann","hotelkauffrau","hotelkaufmann","hotelmanagement")),
-    ("Fachfrau für Systemgastronomie", 5, ("fachfrau für systemgastronomie","fachfrau fur systemgastronomie","fachmann für systemgastronomie","fachmann fur systemgastronomie","systemgastronomie")),
-    ("Kauffrau im Einzelhandel", 4, ("kauffrau im einzelhandel","kaufmann im einzelhandel","kauffrau einzelhandel","kaufmann einzelhandel")),
-    ("Kauffrau für Spedition und Logistikdienstleistung", 3, ("kauffrau für spedition und logistikdienstleistung","kauffrau fur spedition und logistikdienstleistung","kaufmann für spedition und logistikdienstleistung","kaufmann fur spedition und logistikdienstleistung","spedition und logistikdienstleistung","speditionskauffrau","speditionskaufmann")),
-    ("Kauffrau im Groß- und Außenhandelsmanagement", 2, ("kauffrau im groß- und außenhandelsmanagement","kauffrau im gross- und aussenhandelsmanagement","kaufmann im groß- und außenhandelsmanagement","kaufmann im gross- und aussenhandelsmanagement","groß- und außenhandelsmanagement","gross- und aussenhandelsmanagement")),
-    ("Industriekauffrau", 1, ("industriekauffrau","industriekaufmann")),
+    # Ordre demandé : priorité métier > région > récence.
+    ("Fachverkäufer/in im Lebensmittelhandwerk", 10, (
+        "fachverkäufer im lebensmittelhandwerk","fachverkaeufer im lebensmittelhandwerk",
+        "fachverkäuferin im lebensmittelhandwerk","fachverkaeuferin im lebensmittelhandwerk",
+        "fachverkäufer im lebensmittelverkauf","fachverkäuferin im lebensmittelverkauf",
+        "fachverkäufer bäckerei","fachverkäuferin bäckerei","fachverkäufer baeckerei","fachverkäuferin baeckerei",
+        "fachverkäufer konditorei","fachverkäuferin konditorei","fachverkäufer fleischerei","fachverkäuferin fleischerei",
+        "fachverkäufer im lebensmittelhandwerk","lebensmittelhandwerk verkauf",
+    )),
+    ("Kauffrau im Einzelhandel", 9, (
+        "kauffrau im einzelhandel","kaufmann im einzelhandel","kauffrau einzelhandel","kaufmann einzelhandel",
+        "kaufmann/-frau im einzelhandel","kauffrau/kaufmann im einzelhandel",
+    )),
+    ("Koch/Köchin", 8, (
+        "koch","köchin","koechin","koch/ köchin","koch/köchin","koch/-frau",
+        "ausbildung koch","ausbildung köchin",
+    )),
+    ("Hotelfachmann/-frau", 7, (
+        "hotelfachfrau","hotelfachmann","hotelfachfrau/-mann","hotelfachmann/-frau",
+        "hotelkauffrau","hotelkaufmann","hotelmanagement",
+    )),
+    ("Bäcker/in", 6, (
+        "bäcker","baecker","bäckerin","baeckerin","bäcker/in","baecker/in",
+        "ausbildung bäcker","ausbildung baecker","bäckerei","baeckerei","konditorei",
+    )),
+    ("Fachfrau/Fachmann für Systemgastronomie", 5, (
+        "fachfrau für systemgastronomie","fachfrau fur systemgastronomie",
+        "fachmann für systemgastronomie","fachmann fur systemgastronomie",
+        "fachfrau/fachmann für systemgastronomie","systemgastronomie",
+    )),
+    ("Kauffrau für Spedition und Logistikdienstleistung", 4, (
+        "kauffrau für spedition und logistikdienstleistung","kauffrau fur spedition und logistikdienstleistung",
+        "kaufmann für spedition und logistikdienstleistung","kaufmann fur spedition und logistikdienstleistung",
+        "kaufmann/-frau für spedition und logistikdienstleistung","kauffrau/kaufmann für spedition und logistikdienstleistung",
+        "spedition und logistikdienstleistung","speditionskauffrau","speditionskaufmann",
+    )),
+    ("Kauffrau im Groß- und Außenhandelsmanagement", 3, (
+        "kauffrau im groß- und außenhandelsmanagement","kauffrau im gross- und aussenhandelsmanagement",
+        "kaufmann im groß- und außenhandelsmanagement","kaufmann im gross- und aussenhandelsmanagement",
+        "kaufmann/-frau im groß- und außenhandelsmanagement","kauffrau/kaufmann im groß- und außenhandelsmanagement",
+        "groß- und außenhandelsmanagement","gross- und aussenhandelsmanagement",
+    )),
+    ("Industriekaufmann/-frau", 2, (
+        "industriekauffrau","industriekaufmann","industriekaufmann/-frau","industriekauffrau/-mann",
+    )),
+    ("Kaufmann/-frau für Büromanagement", 1, (
+        "kauffrau für büromanagement","kauffrau fur bueromanagement","kaufmann für büromanagement","kaufmann fur bueromanagement",
+        "kaufmann/-frau für büromanagement","kauffrau/kaufmann für büromanagement","büromanagement","bueromanagement",
+    )),
 ]
 REGION_PRIORITY = [
-    ("Ostbayern & Bayerische Alpen", 7, ("ostbayern","niederbayern","oberpfalz","passau","regensburg","landshut","deggendorf","straubing","dingolfing","kelheim","amberg","weiden","cham","bayerischer wald","bayerische alpen","garmisch-partenkirchen","garmisch","rosenheim","traunstein","berchtesgadener land","berchtesgaden","miesbach","bad reichenhall","allgäu","kempten","sonthofen","oberstdorf")),
-    ("Thüringen & Sachsen", 6, ("thüringen","thueringen","erfurt","jena","weimar","gera","suhl","gotha","eisenach","sachsen","dresden","leipzig","chemnitz","zwickau","görlitz","goerlitz","plauen","bautzen","freiberg")),
-    ("Schwarzwald, Bodensee & industrielles Baden-Württemberg", 5, ("baden-württemberg","baden-wuerttemberg","schwarzwald","bodensee","stuttgart","karlsruhe","mannheim","heidelberg","ulm","heilbronn","pforzheim","freiburg","offenburg","villingen-schwenningen","reutlingen","tübingen","tuebingen","konstanz","friedrichshafen","ravensburg","lörrach","loerrach","böblingen","boeblingen","esslingen","aalen","singen","donaueschingen")),
-    ("Mecklenburg-Vorpommern", 4, ("mecklenburg-vorpommern","mecklenburg vorpommern","rostock","schwerin","wismar","stralsund","greifswald","neubrandenburg","güstrow","guestrow","waren","usedom")),
-    ("NRW & Südwestfalen", 3, ("nordrhein-westfalen","nordrhein westfalen","nrw","südwestfalen","suedwestfalen","düsseldorf","duesseldorf","köln","koeln","bonn","aachen","dortmund","essen","bochum","duisburg","münster","muenster","bielefeld","wuppertal","krefeld","neuss","mönchengladbach","moenchengladbach","hagen","siegen","arnsberg","olpe","meschede","lüdenscheid","luedenscheid","iserlohn","soest","paderborn","gütersloh","guetersloh")),
-    ("West-Niedersachsen & französisch-deutscher Grenzraum", 2, ("west-niedersachsen","westniedersachsen","niedersachsen","osnabrück","osnabrueck","emsland","lingen","papenburg","meppen","cloppenburg","vechta","oldenburg","ammerland","grafschaft bentheim","nordhorn","aurich","leer","saarland","saarbrücken","saarbruecken","rheinland-pfalz","trier","kaiserslautern","koblenz","landau","zweibrücken","zweibruecken","kehl","ortenau")),
+    ("Ostbayern & Bayerische Alpen", 10, (
+        "ostbayern","niederbayern","oberpfalz","passau","regensburg","landshut","deggendorf","straubing","dingolfing",
+        "kelheim","amberg","weiden","weiden in der oberpfalz","cham","bayerischer wald",
+        "bayerische alpen","garmisch-partenkirchen","garmisch","rosenheim","traunstein","traunstein bayern",
+        "berchtesgadener land","berchtesgaden","miesbach","bad reichenhall","allgäu","kempten","sonthofen","oberstdorf",
+        "eichstätt","eichstaett",
+    )),
+    ("Thüringen & Sachsen", 9, (
+        "thüringen","thueringen","erfurt","erfurt region","jena","weimar","gera","suhl","gotha","eisenach",
+        "sachsen","dresden","leipzig","chemnitz","zwickau","görlitz","goerlitz","plauen","bautzen","freiberg",
+    )),
+    ("Schwarzwald, Bodensee & industrielles Baden-Württemberg", 8, (
+        "baden-württemberg","baden-wuerttemberg","schwarzwald","bodensee","stuttgart","karlsruhe","mannheim","heidelberg",
+        "ulm","heilbronn","pforzheim","freiburg","offenburg","villingen-schwenningen","reutlingen","tübingen","tuebingen",
+        "konstanz","friedrichshafen","ravensburg","lörrach","loerrach","böblingen","boeblingen","esslingen","aalen","singen",
+        "donaueschingen",
+    )),
+    ("Mecklenburg-Vorpommern — zones rurales", 7, (
+        "mecklenburg-vorpommern","mecklenburg vorpommern","rostock","schwerin","wismar","stralsund","greifswald",
+        "neubrandenburg","güstrow","guestrow","waren","usedom","ländlicher raum mecklenburg-vorpommern",
+        "landkreis mecklenburg-vorpommern",
+    )),
+    ("Sachsen-Anhalt — zones rurales", 7, (
+        "sachsen-anhalt","sachsen anhalt","anhalt","magdeburg","halle (saale)","halle saale","dessau","wittenberg",
+        "stendal","altmark","harz","salzlandkreis","burgenlandkreis","landkreis börde",
+    )),
+    ("NRW & Südwestfalen", 6, (
+        "nordrhein-westfalen","nordrhein westfalen","nrw","südwestfalen","suedwestfalen","düsseldorf","duesseldorf",
+        "köln","koeln","bonn","aachen","dortmund","essen","bochum","duisburg","münster","muenster","bielefeld",
+        "wuppertal","krefeld","neuss","mönchengladbach","moenchengladbach","hagen","siegen","arnsberg","olpe","meschede",
+        "lüdenscheid","luedenscheid","iserlohn","soest","paderborn","gütersloh","guetersloh",
+    )),
+    ("West-Niedersachsen & français-allemand / Rheinland-Pfalz", 5, (
+        "west-niedersachsen","westniedersachsen","niedersachsen","osnabrück","osnabrueck","emsland","lingen","papenburg",
+        "meppen","cloppenburg","vechta","oldenburg","ammerland","grafschaft bentheim","nordhorn","aurich","leer",
+        "saarland","saarbrücken","saarbruecken","rheinland-pfalz","trier","kaiserslautern","koblenz","landau",
+        "zweibrücken","zweibruecken","pirmasens","kehl","ortenau",
+    )),
 ]
 # Every configured source is an independent discovery target.
 # IMPORTANT: the historical IHK-Lehrstellenbörse was discontinued on 31.12.2024;
@@ -81,20 +171,25 @@ SECTOR_SOURCE_DOMAINS=[
 ]
 ALL_SOURCE_DOMAINS=PRIMARY_SOURCE_DOMAINS+SECTOR_SOURCE_DOMAINS
 ROLE_SEARCH_TERMS={
-"Hotelfachfrau / Hotelkauffrau":'"Hotelfachfrau" OR "Hotelkauffrau" OR "Hotelfachmann" OR "Hotelkaufmann"',
-"Fachfrau für Systemgastronomie":'"Fachfrau für Systemgastronomie" OR "Fachmann für Systemgastronomie"',
-"Kauffrau im Einzelhandel":'"Kauffrau im Einzelhandel" OR "Kaufmann im Einzelhandel"',
-"Kauffrau für Spedition und Logistikdienstleistung":'"Kauffrau für Spedition und Logistikdienstleistung" OR "Kaufmann für Spedition und Logistikdienstleistung"',
-"Kauffrau im Groß- und Außenhandelsmanagement":'"Kauffrau im Groß- und Außenhandelsmanagement" OR "Kaufmann im Groß- und Außenhandelsmanagement"',
-"Industriekauffrau":'"Industriekauffrau" OR "Industriekaufmann"',
+"Fachverkäufer/in im Lebensmittelhandwerk":'"Fachverkäufer im Lebensmittelhandwerk" OR "Fachverkäuferin im Lebensmittelhandwerk" OR "Fachverkäufer/in im Lebensmittelhandwerk" OR "Fachverkäufer Bäckerei" OR "Fachverkäuferin Bäckerei" OR "Fachverkäufer Konditorei" OR "Fachverkäuferin Konditorei" OR "Fachverkäufer Fleischerei" OR "Fachverkäuferin Fleischerei"',
+"Kauffrau im Einzelhandel":'"Kauffrau im Einzelhandel" OR "Kaufmann im Einzelhandel" OR "Kaufmann/-frau im Einzelhandel"',
+"Koch/Köchin":'"Koch" OR "Köchin" OR "Koch/Köchin" OR "Koch/Köchin m/w/d"',
+"Hotelfachmann/-frau":'"Hotelfachfrau" OR "Hotelfachmann" OR "Hotelfachmann/-frau" OR "Hotelfachfrau/-mann" OR "Hotelkauffrau" OR "Hotelkaufmann"',
+"Bäcker/in":'"Bäcker" OR "Bäckerin" OR "Bäcker/in" OR "Bäckerei" OR "Konditorei"',
+"Fachfrau/Fachmann für Systemgastronomie":'"Fachfrau für Systemgastronomie" OR "Fachmann für Systemgastronomie" OR "Fachfrau/Fachmann für Systemgastronomie"',
+"Kauffrau für Spedition und Logistikdienstleistung":'"Kauffrau für Spedition und Logistikdienstleistung" OR "Kaufmann für Spedition und Logistikdienstleistung" OR "Kaufmann/-frau für Spedition und Logistikdienstleistung"',
+"Kauffrau im Groß- und Außenhandelsmanagement":'"Kauffrau im Groß- und Außenhandelsmanagement" OR "Kaufmann im Groß- und Außenhandelsmanagement" OR "Kaufmann/-frau im Groß- und Außenhandelsmanagement"',
+"Industriekaufmann/-frau":'"Industriekauffrau" OR "Industriekaufmann" OR "Industriekaufmann/-frau"',
+"Kaufmann/-frau für Büromanagement":'"Kauffrau für Büromanagement" OR "Kaufmann für Büromanagement" OR "Kaufmann/-frau für Büromanagement"',
 }
 REGION_SEARCH_TERMS={
-"Ostbayern & Bayerische Alpen":'"Ostbayern" OR "Niederbayern" OR "Oberpfalz" OR "Bayerische Alpen" OR "Allgäu"',
-"Thüringen & Sachsen":'"Thüringen" OR "Sachsen" OR "Erfurt" OR "Dresden" OR "Leipzig" OR "Chemnitz"',
+"Ostbayern & Bayerische Alpen":'"Ostbayern" OR "Niederbayern" OR "Oberpfalz" OR "Weiden" OR "Traunstein" OR "Eichstätt" OR "Bayerische Alpen" OR "Allgäu"',
+"Thüringen & Sachsen":'"Thüringen" OR "Erfurt" OR "Erfurter Region" OR "Sachsen" OR "Dresden" OR "Leipzig" OR "Chemnitz"',
 "Schwarzwald, Bodensee & industrielles Baden-Württemberg":'"Baden-Württemberg" OR "Schwarzwald" OR "Bodensee" OR "Stuttgart" OR "Karlsruhe" OR "Freiburg" OR "Ulm"',
-"Mecklenburg-Vorpommern":'"Mecklenburg-Vorpommern" OR "Rostock" OR "Schwerin" OR "Stralsund" OR "Greifswald"',
+"Mecklenburg-Vorpommern — zones rurales":'"Mecklenburg-Vorpommern" OR "Rostock" OR "Schwerin" OR "Stralsund" OR "Greifswald" OR "ländlicher Raum Mecklenburg-Vorpommern"',
+"Sachsen-Anhalt — zones rurales":'"Sachsen-Anhalt" OR "Altmark" OR "Harz" OR "Stendal" OR "Wittenberg" OR "ländlicher Raum Sachsen-Anhalt"',
 "NRW & Südwestfalen":'"Nordrhein-Westfalen" OR "NRW" OR "Südwestfalen" OR "Dortmund" OR "Düsseldorf" OR "Köln" OR "Siegen"',
-"West-Niedersachsen & französisch-deutscher Grenzraum":'"West-Niedersachsen" OR "Osnabrück" OR "Emsland" OR "Oldenburg" OR "Saarland" OR "Rheinland-Pfalz" OR "Saarbrücken" OR "Trier"',
+"West-Niedersachsen & français-allemand / Rheinland-Pfalz":'"West-Niedersachsen" OR "Osnabrück" OR "Emsland" OR "Oldenburg" OR "Saarland" OR "Rheinland-Pfalz" OR "Pirmasens" OR "Saarbrücken" OR "Trier"',
 }
 # The scraper is time-budgeted instead of offer-count limited.
 # One GitHub run is allowed to work for about 4h30, then it stops cleanly,
@@ -792,7 +887,8 @@ def extract_posting_sort_date(job):
 
 def job_sort_key(job):
     rn,rr=detect_region(job); ro,ror=detect_target_role(job)
-    return (extract_posting_sort_date(job),rr,ror,clean(job.get("date_detection","")),clean(job.get("id","")))
+    # Priorité métier d'abord, puis région, puis récence à l'intérieur de la priorité.
+    return (ror,rr,extract_posting_sort_date(job),clean(job.get("date_detection","")),clean(job.get("id","")))
 
 def prioritize_jobs(jobs):
     filtered=[]; seen=set()
@@ -808,8 +904,8 @@ def prioritize_jobs(jobs):
         if job.get("id") in seen: continue
         seen.add(job.get("id")); filtered.append(job)
     filtered.sort(key=job_sort_key,reverse=True)
-    print(f"[*] Filtrage: {len(filtered)} offres conservées sur les six Ausbildung cibles.")
-    print("[*] Ordre: publication la plus récente → la plus ancienne; région/Ausbildung utilisés seulement en cas d'égalité.")
+    print(f"[*] Filtrage: {len(filtered)} offres conservées sur les Ausbildung cibles.")
+    print("[*] Ordre: priorité Ausbildung → priorité région → publication la plus récente.")
     return filtered
 
 def _normalized_text(value):
@@ -817,12 +913,16 @@ def _normalized_text(value):
 
 def _detect_role_title(title,text):
     t=_normalized_text(clean(title)+" "+clean(text))
-    if any(x in t for x in ("hotelfachfrau","hotelfachmann","hotelkauffrau","hotelkaufmann","hotelmanagement")): return "Hotelfachfrau / Hotelkauffrau"
-    if "systemgastronomie" in t: return "Fachfrau für Systemgastronomie"
+    if any(x in t for x in ("fachverkaeufer im lebensmittelhandwerk","fachverkaeuferin im lebensmittelhandwerk","fachverkaeufer baeckerei","fachverkaeuferin baeckerei","fachverkaeufer konditorei","fachverkaeuferin konditorei","fachverkaeufer fleischerei","fachverkaeuferin fleischerei")): return "Fachverkäufer/in im Lebensmittelhandwerk"
     if "einzelhandel" in t: return "Kauffrau im Einzelhandel"
+    if any(x in t for x in ("koch","koechin","köchin")): return "Koch/Köchin"
+    if any(x in t for x in ("hotelfachfrau","hotelfachmann","hotelkauffrau","hotelkaufmann","hotelmanagement")): return "Hotelfachmann/-frau"
+    if any(x in t for x in ("baecker","bäcker","baeckerei","bäckerei","konditorei")): return "Bäcker/in"
+    if "systemgastronomie" in t: return "Fachfrau/Fachmann für Systemgastronomie"
     if "spedition und logistikdienstleistung" in t or "speditionskauffrau" in t or "speditionskaufmann" in t: return "Kauffrau für Spedition und Logistikdienstleistung"
     if "gross- und aussenhandelsmanagement" in t: return "Kauffrau im Groß- und Außenhandelsmanagement"
-    if "industriekauffrau" in t or "industriekaufmann" in t: return "Industriekauffrau"
+    if "industriekauffrau" in t or "industriekaufmann" in t: return "Industriekaufmann/-frau"
+    if "bueromanagement" in t or "büromanagement" in t: return "Kaufmann/-frau für Büromanagement"
     return ""
 
 
