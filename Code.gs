@@ -401,31 +401,8 @@ function doPost(e) {
     }
   }
 
-  // Parse the request BEFORE taking the script lock. JSON parsing does not touch
-  // the spreadsheet and therefore should never block other webhook executions.
-  let rawData2;
-  try {
-    rawData2 = rawData;
-  } catch (error) {
-    return ContentService
-      .createTextOutput(JSON.stringify({
-        status: "error",
-        message: "JSON invalide: " + error.toString()
-      }))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-  rawData = rawData2;
-  try {
-    rawData = JSON.parse(e.postData.contents);
-  } catch (error) {
-    return ContentService
-      .createTextOutput(JSON.stringify({
-        status: "error",
-        message: "JSON invalide: " + error.toString()
-      }))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
-
+  // rawData est déjà parsé avant d'entrer dans le lock.
+  // Le mode get_cv retourne immédiatement sans toucher au Sheet.
   const lock = LockService.getScriptLock();
   try {
     // Keep the critical section short. The Python scraper sends small batches,
