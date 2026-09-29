@@ -1330,260 +1330,16 @@ function extrairePriorite(roleCible) {
 }
 
 function traiterAusbildungCandidatures() {
-  const lock = LockService.getScriptLock();
-
-  try {
-    lock.waitLock(30000);
-
-    const sheet = getSheet();
-    const data = sheet.getDataRange().getValues();
-    const now = new Date();
-
-    if (data.length <= 1) {
-      Logger.log("⚠️ Sheet vide.");
-      return;
-    }
-
-    // Le workflow tente jusqu'à CONFIG.BATCH_LIMIT messages par passage.
-    // Les limites réelles du compte Google restent appliquées côté Gmail/Apps Script.
-    // Une erreur d'envoi est journalisée sans bloquer les autres lignes.
-    // Le quota Apps Script est la vraie limite : on ne tente jamais plus
-    // de messages que le nombre de destinataires encore disponible aujourd'hui.
-    const quotaRestant = MailApp.getRemainingDailyQuota();
-    if (quotaRestant <= 0) {
-      Logger.log("⛔ QUOTA GMAIL APPS SCRIPT ÉPUISÉ — aucun envoi tenté. Le prochain trigger réessaiera.");
-      return;
-    }
-    const limite = Math.min(CONFIG.BATCH_LIMIT, quotaRestant);
-    Logger.log("📨 Quota restant détecté : " + quotaRestant + " | limite de ce run : " + limite);
-    const debutExecution = Date.now();
-    let compteur = 0;
-
-    // Historique PERSISTANT : protège contre un second envoi au même email
-    // même si la ligne change de statut ou si un nouveau job apparaît.
-    const { sentEmails } = buildSheetIndexes(data);
-
-    // Une seule candidature par email pendant cette exécution également.
-    const emailsEnvoyesCetteExecution = new Set();
-
-    // Cache des CV pour éviter de relire Drive 30 fois.
-    const cvCache = {};
-    const pendingStatusUpdates = [];
-    const pendingDateUpdates = [];
-
-    const rowIndexes = [];
-    for (let i = 1; i < data.length; i++) {
-      const status = String(data[i][COL.STATUT] || "").trim();
-      if (status === "NOUVEAU") rowIndexes.push(i);
-    }
-    for (let i = 1; i < data.length; i++) {
-      const status = String(data[i][COL.STATUT] || "").trim();
-      if (status === "CANDIDATURE_ENVOYEE") rowIndexes.push(i);
-    }
-
-    // Nouvelles candidatures d'abord.
-    // Pour les nouvelles offres : plus récente → plus ancienne.
-    // Les priorités région/Ausbildung servent seulement en cas d'égalité.
-    // Les relances viennent ensuite, avec les plus anciennes candidatures à relancer en premier.
-    rowIndexes.sort((a, b) => {
-      const statusA = String(data[a][COL.STATUT] || "").trim();
-      const statusB = String(data[b][COL.STATUT] || "").trim();
-
-      if (statusA !== statusB) {
-        return statusA === "NOUVEAU" ? -1 : 1;
-      }
-
-      if (statusA === "NOUVEAU") {
-        const dateB = new Date(data[b][COL.DATE_OFFRE] || 0).getTime() || 0;
-        const dateA = new Date(data[a][COL.DATE_OFFRE] || 0).getTime() || 0;
-        if (dateB !== dateA) return dateB - dateA;
-
-        const regionDiff =
-          Number(data[b][COL.PRIORITE_REGION] || 0) -
-          Number(data[a][COL.PRIORITE_REGION] || 0);
-        if (regionDiff !== 0) return regionDiff;
-
-        return Number(data[b][COL.PRIORITE_AUSBILDUNG] || 0) -
-               Number(data[a][COL.PRIORITE_AUSBILDUNG] || 0);
-      }
-
-      const sentB = new Date(data[b][COL.DATE_CANDIDATURE] || 0).getTime() || 0;
-      const sentA = new Date(data[a][COL.DATE_CANDIDATURE] || 0).getTime() || 0;
-      return sentA - sentB;
-    });
-
-    for (const i of rowIndexes) {
-      if (Date.now() - debutExecution >= CONFIG.MAX_EXECUTION_MS) {
-        Logger.log("[TIME] Arrêt propre avant la limite Apps Script; le prochain trigger reprendra.");
-        break;
-      }
-      if (compteur >= limite) break;
-      const row = data[i];
-
-      const statut = String(row[COL.STATUT] || "").trim();
-      const roleCible = String(row[COL.ROLE_CIBLE] || "").trim();
-      const intitule = String(row[COL.INTITULE] || "").trim();
-      const entreprise = String(row[COL.ENTREPRISE] || "").trim() || "Unternehmen Deutschland";
-      const emailCible = extractFirstEmail(row[COL.EMAILS_RH] || "");
-      const dateEnvoi = row[COL.DATE_CANDIDATURE] ? new Date(row[COL.DATE_CANDIDATURE]) : null;
-      const rowNum = i + 1;
-
-      if (!emailCible || !isValidEmail(emailCible)) {
-        continue;
-      }
-
-      // Protection permanente contre une DEUXIÈME CANDIDATURE INITIALE
-      // à la même adresse. Une relance 48h reste autorisée pour la ligne
-      // déjà envoyée.
-      if (emailsEnvoyesCetteExecution.has(emailCible)) {
-        continue;
-      }
-
-      // ── CANDIDATURE INITIALE ────────────────────────────────────────────
-      if (statut === "NOUVEAU") {
-        if (sentEmails.has(emailCible)) {
-          Logger.log("⏭️ Candidature initiale déjà envoyée historiquement : " + emailCible);
-          continue;
-        }
-
-        const specialite = detecterSpecialite(intitule, roleCible);
-
-        if (!(specialite in cvCache)) {
-          cvCache[specialite] = getCV(intitule, roleCible);
-        }
-
-        const cvFile = cvCache[specialite];
-
-        if (!cvFile) {
-          Logger.log("⏭️ Ligne " + rowNum + " : CV manquant pour " + specialite);
-          continue;
-        }
-
-        const { titrePoste, body } = genererEmailCandidature(
-          entreprise, intitule, roleCible
-        );
-        const sujet = "Bewerbung um einen Ausbildungsplatz als " + titrePoste + " – " + CONFIG.NOM;
-
-        try {
-          GmailApp.sendEmail(emailCible, sujet, "", {
-            htmlBody: body,
-            attachments: [cvFile.getAs(MimeType.PDF)],
-            name: CONFIG.NOM,
-            replyTo: CONFIG.EMAIL,
-          });
-
-          const dateEnvoiNow = new Date();
-          data[i][COL.STATUT] = "CANDIDATURE_ENVOYEE";
-          data[i][COL.DATE_CANDIDATURE] = dateEnvoiNow;
-          pendingStatusUpdates.push([rowNum, "CANDIDATURE_ENVOYEE"]);
-          pendingDateUpdates.push([rowNum, dateEnvoiNow]);
-
-          compteur++;
-          emailsEnvoyesCetteExecution.add(emailCible);
-          sentEmails.add(emailCible);
-
-          Logger.log("✅ ENVOI #" + compteur + "/" + limite + " → " + emailCible);
-
-          if (compteur < limite && CONFIG.DELAI_ENTRE_EMAILS_MS > 0) {
-            Utilities.sleep(CONFIG.DELAI_ENTRE_EMAILS_MS);
-          }
-
-        } catch (err) {
-          Logger.log("❌ ERREUR ENVOI ligne " + rowNum + " / " + emailCible + ": " + err.toString());
-        }
-
-        continue;
-      }
-
-      // ── RELANCE 48H ─────────────────────────────────────────────────────
-      if (statut === "CANDIDATURE_ENVOYEE" && dateEnvoi) {
-        const diffHeures = (now - dateEnvoi) / (1000 * 60 * 60);
-
-        if (diffHeures < CONFIG.DELAI_RELANCE_H) {
-          continue;
-        }
-
-        // IMPORTANT : si on relance, on autorise explicitement cette adresse
-        // une seconde fois. C'est la seule exception à la règle "pas de
-        // candidature initiale deux fois".
-        const specialite = detecterSpecialite(intitule, roleCible);
-
-        if (!(specialite in cvCache)) {
-          cvCache[specialite] = getCV(intitule, roleCible);
-        }
-
-        const cvFile = cvCache[specialite];
-        const { titrePoste, body } = genererEmailRelance(
-          entreprise, intitule, roleCible
-        );
-        const sujet = "Nachfassaktion – Bewerbung als " + titrePoste + " – " + CONFIG.NOM;
-
-        try {
-          GmailApp.sendEmail(emailCible, sujet, "", {
-            htmlBody: body,
-            attachments: cvFile ? [cvFile.getAs(MimeType.PDF)] : [],
-            name: CONFIG.NOM,
-            replyTo: CONFIG.EMAIL,
-          });
-
-          const dateRelanceNow = new Date();
-          data[i][COL.STATUT] = "RELANCE_EFFECTUEE";
-          data[i][COL.DATE_RELANCE] = dateRelanceNow;
-          pendingStatusUpdates.push([rowNum, "RELANCE_EFFECTUEE"]);
-          pendingDateUpdates.push([rowNum, dateRelanceNow]);
-
-          compteur++;
-          emailsEnvoyesCetteExecution.add(emailCible);
-
-          Logger.log("🔄 RELANCE #" + compteur + "/" + limite + " → " + emailCible);
-
-          if (compteur < limite) {
-            Utilities.sleep(CONFIG.DELAI_ENTRE_EMAILS_MS);
-          }
-
-        } catch (err) {
-          Logger.log("❌ ERREUR RELANCE ligne " + rowNum + " / " + emailCible + ": " + err.toString());
-        }
-      }
-    }
-
-    // Écritures Sheet regroupées en fin de run pour réduire fortement les accès API.
-    if (pendingStatusUpdates.length) {
-      const statusValues = data.slice(1).map(row => [row[COL.STATUT] || ""]);
-      const dateCandidatureValues = data.slice(1).map(row => [row[COL.DATE_CANDIDATURE] || ""]);
-      const dateRelanceValues = data.slice(1).map(row => [row[COL.DATE_RELANCE] || ""]);
-
-      for (const [rowNum, status] of pendingStatusUpdates) {
-        statusValues[rowNum - 2] = [status];
-      }
-      for (const [rowNum, dateValue] of pendingDateUpdates) {
-        const idx = rowNum - 2;
-        const status = String(data[rowNum - 1][COL.STATUT] || "").trim();
-        if (status === "CANDIDATURE_ENVOYEE") {
-          dateCandidatureValues[idx] = [dateValue];
-        } else if (status === "RELANCE_EFFECTUEE") {
-          dateRelanceValues[idx] = [dateValue];
-        }
-      }
-
-      sheet.getRange(2, COL.STATUT + 1, statusValues.length, 1).setValues(statusValues);
-      sheet.getRange(2, COL.DATE_CANDIDATURE + 1, dateCandidatureValues.length, 1).setValues(dateCandidatureValues);
-      sheet.getRange(2, COL.DATE_RELANCE + 1, dateRelanceValues.length, 1).setValues(dateRelanceValues);
-    }
-
-    Logger.log("FIN — " + compteur + " email(s) envoyé(s) / tentatives autorisées: " + limite);
-
-  } catch (error) {
-    Logger.log("[TRAITEMENT] Erreur: " + error.toString());
-  } finally {
-    try { lock.releaseLock(); } catch (_) {}
-  }
+  // Email sending is now owned exclusively by GitHub Actions + Gmail SMTP.
+  // This function intentionally does nothing so any legacy Apps Script trigger
+  // cannot send duplicate applications in parallel with the GitHub workflow.
+  Logger.log("⏸️ Apps Script email sender disabled — GitHub SMTP workflow is the sole sender.");
 }
 
 
-
 // ─────────────────────────────────────────────────────────────────────────────
-// INSTALLATION DU TRIGGER HORAIRE — À APPELER UNE SEULE FOIS
+// INSTALLATION DU TRIGGER HORAIRE
+ — À APPELER UNE SEULE FOIS
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -1592,22 +1348,19 @@ function traiterAusbildungCandidatures() {
  * Supprime les anciens triggers du même nom pour éviter les doublons.
  */
 function configurerDeclencheurs() {
-  // Supprimer tous les triggers existants sur cette fonction
+  // GitHub Actions is the only email scheduler now.
+  // Running this function removes any legacy Apps Script email trigger.
+  let removed = 0;
+
   ScriptApp.getProjectTriggers().forEach(trigger => {
     if (trigger.getHandlerFunction() === "traiterAusbildungCandidatures") {
       ScriptApp.deleteTrigger(trigger);
-      Logger.log("[TRIGGER] Ancien trigger supprimé.");
+      removed++;
     }
   });
 
-  // Créer un nouveau trigger horaire
-  ScriptApp.newTrigger("traiterAusbildungCandidatures")
-    .timeBased()
-    .everyHours(1)
-    .create();
-
-  Logger.log("✅ Trigger horaire installé : 'traiterAusbildungCandidatures' sera exécuté toutes les heures.");
-  Logger.log("   → Jusqu'à 100 envois valides par exécution, plafonnés par le quota Apps Script restant.");
+  Logger.log("🧹 " + removed + " ancien(s) trigger(s) email Apps Script supprimé(s).");
+  Logger.log("✅ Les emails sont désormais planifiés uniquement par GitHub Actions.");
 }
 
 /**
