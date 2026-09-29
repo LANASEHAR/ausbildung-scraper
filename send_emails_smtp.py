@@ -179,22 +179,73 @@ def generer_email_relance(specialite: str):
 # COMMUNICATION AVEC GOOGLE APPS SCRIPT (SHEET + DRIVE)
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _webhook_json(method: str, *, json_payload=None, params=None, label="webhook", attempts=4):
+    """
+    Appel robuste du Web App Apps Script.
+    Les 404/5xx peuvent être transitoires côté Web App; on retente avec backoff.
+    """
+    last_error = None
+
+    for attempt in range(1, attempts + 1):
+        try:
+            if method == "POST":
+                resp = requests.post(
+                    CONFIG["WEBHOOK_URL"],
+                    json=json_payload,
+                    timeout=60,
+                )
+            else:
+                resp = requests.get(
+                    CONFIG["WEBHOOK_URL"],
+                    params=params,
+                    timeout=60,
+                )
+
+            if resp.status_code == 200:
+                return resp.json()
+
+            if resp.status_code in (404, 429, 500, 502, 503, 504):
+                last_error = RuntimeError(
+                    f"{label}: HTTP {resp.status_code}"
+                )
+                if attempt < attempts:
+                    delay = min(5 * (2 ** (attempt - 1)), 30)
+                    print(
+                        f"⚠️ {label}: HTTP {resp.status_code} "
+                        f"— retry {attempt + 1}/{attempts} dans {delay}s"
+                    )
+                    time.sleep(delay)
+                    continue
+
+            resp.raise_for_status()
+
+        except (requests.RequestException, ValueError) as exc:
+            last_error = exc
+            if attempt < attempts:
+                delay = min(5 * (2 ** (attempt - 1)), 30)
+                print(
+                    f"⚠️ {label}: {exc} "
+                    f"— retry {attempt + 1}/{attempts} dans {delay}s"
+                )
+                time.sleep(delay)
+                continue
+
+    raise RuntimeError(
+        f"{label}: échec après {attempts} tentatives: {last_error}"
+    )
+
+
 def recuperer_offres_en_attente(offset=0):
-    # Fetch a large candidate pool because many rows may be unusable
-    # (invalid email, missing CV, unknown specialization, etc.).
-    # get_pending est implémenté dans doPost(e) côté Google Apps Script.
-    # Utiliser POST ici est essentiel : un GET appelle seulement doGet().
-    resp = requests.post(
-        CONFIG["WEBHOOK_URL"],
-        json={
+    # get_pending est implémenté dans doPost(e).
+    data = _webhook_json(
+        "POST",
+        json_payload={
             "action": "get_pending",
             "limit": CONFIG["FETCH_PAGE_SIZE"],
             "offset": offset,
         },
-        timeout=60,
+        label="get_pending",
     )
-    resp.raise_for_status()
-    data = resp.json()
     if "stats" in data:
         print(f"📊 Diagnostic Sheet ({data.get('sheet_name')}): {data['stats']}")
     return data.get("items", [])
@@ -204,13 +255,17 @@ def recuperer_cv_depuis_drive(specialite: str, cv_cache: dict):
     if specialite in cv_cache:
         return cv_cache[specialite]
 
-    resp = requests.get(
-        CONFIG["WEBHOOK_URL"],
-        params={"action": "get_cv", "specialite": specialite},
-        timeout=60,
+    # IMPORTANT: use POST, not GET. This avoids the intermittent Apps Script
+    # googleusercontent GET 404 seen when fetching CVs from GitHub Actions.
+    data = _webhook_json(
+        "POST",
+        json_payload={
+            "action": "get_cv",
+            "specialite": specialite,
+        },
+        label=f"get_cv/{specialite}",
     )
-    resp.raise_for_status()
-    data = resp.json()
+
     if data.get("status") != "success" or not data.get("base64"):
         cv_cache[specialite] = None
         return None
@@ -244,9 +299,12 @@ def mettre_a_jour_sheet(updates: list):
     if not updates:
         return
     payload = {"action": "mark_sent", "updates": updates}
-    resp = requests.post(CONFIG["WEBHOOK_URL"], json=payload, timeout=60)
-    resp.raise_for_status()
-    print(f"📊 Sheet mis à jour : {resp.json()}")
+    data = _webhook_json(
+        "POST",
+        json_payload=payload,
+        label="mark_sent",
+    )
+    print(f"📊 Sheet mis à jour : {data}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
