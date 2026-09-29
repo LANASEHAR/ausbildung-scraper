@@ -5,7 +5,7 @@
  *
  * FONCTIONS PRINCIPALES :
  *   doPost(e)                        → Webhook INSERT + UPDATE avec déduplication par ID/email
- *   traiterAusbildungCandidatures()  → Envoi emails + relances 48h (max 100/run, quota Gmail)
+ *   traiterAusbildungCandidatures()  → Envoi emails + relances après 7 jours (max 100/run, quota Gmail)
  *   getCV(intitule, roleCible)        → Mapping CV par spécialité Kauffrau
  *   configurerDeclencheurs()          → Installe le trigger horaire automatique
  *
@@ -25,7 +25,7 @@
 const CONFIG={
   NOM:"Halima Essaouaf", EMAIL:"essaouafhalima@gmail.com", TEL:"+212619968131",
   LINKEDIN:"linkedin.com/in/halima-essaouaf-1b4b81202", NOM_ONGLET:"Ausbildung",
-  BATCH_LIMIT:100, DELAI_ENTRE_EMAILS_MS:100, DELAI_RELANCE_H:48, MAX_EXECUTION_MS:5*60*1000,
+  BATCH_LIMIT:100, DELAI_ENTRE_EMAILS_MS:100, DELAI_RELANCE_H:7*24, MAX_EXECUTION_MS:5*60*1000,
   CV_FOLDER_NAME:"New Bewerbung",
   CV_MAPPING:{
     hotelfachfrau:"Bewerbungsmappe_Hotelfachfrau_Halima_Essaouaf.pdf",
