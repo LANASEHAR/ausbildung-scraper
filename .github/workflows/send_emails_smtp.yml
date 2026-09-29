@@ -1,25 +1,21 @@
 name: Send Ausbildung Emails (SMTP)
 
 on:
-  # Primary trigger: send automatically after the scraper finishes successfully.
-  workflow_run:
-    workflows:
-      - "Ausbildung Job Scraper + Email Search"
-    types:
-      - completed
-
-  # Backup trigger: also run independently every 2 hours.
+  # Independent sender: it reads the Google Sheet directly.
+  # It does NOT wait for or depend on the scraper workflow.
   schedule:
     - cron: '17 */2 * * *'
+      timezone: "Etc/GMT"
 
   workflow_dispatch:
 
 jobs:
   send-emails:
-    # Never send after a failed scraper run when triggered by workflow_run.
-    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+
+    # Only prevents two EMAIL sender runs from sending the same rows
+    # simultaneously. It does not block the scraper workflow.
     concurrency:
       group: ausbildung-email-sender
       cancel-in-progress: false
@@ -36,7 +32,7 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
-      - name: Send pending emails via Gmail SMTP
+      - name: Send up to 80 real emails from the Google Sheet
         env:
           GOOGLE_SHEET_WEBHOOK_URL: ${{ secrets.GOOGLE_SHEET_WEBHOOK_URL }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
@@ -44,16 +40,8 @@ jobs:
           BATCH_LIMIT: "80"
         run: |
           set -e
-          for attempt in 1 2 3; do
-            echo "SMTP sender attempt $attempt/3"
-            if python send_emails_smtp.py; then
-              echo "SMTP sender completed successfully"
-              exit 0
-            fi
-            if [ "$attempt" -lt 3 ]; then
-              echo "Transient failure — retrying in 45 seconds..."
-              sleep 45
-            fi
-          done
-          echo "SMTP sender failed after 3 attempts"
-          exit 1
+          echo "=== Independent SMTP sender ==="
+          echo "Schedule: every 2 hours, GMT, at minute 17"
+          echo "Target: 80 successful SMTP deliveries"
+          echo "Source: Google Sheet"
+          python -u send_emails_smtp.py
