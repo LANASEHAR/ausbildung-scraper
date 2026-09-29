@@ -53,8 +53,32 @@ REGION_PRIORITY = [
     ("NRW & Südwestfalen", 3, ("nordrhein-westfalen","nordrhein westfalen","nrw","südwestfalen","suedwestfalen","düsseldorf","duesseldorf","köln","koeln","bonn","aachen","dortmund","essen","bochum","duisburg","münster","muenster","bielefeld","wuppertal","krefeld","neuss","mönchengladbach","moenchengladbach","hagen","siegen","arnsberg","olpe","meschede","lüdenscheid","luedenscheid","iserlohn","soest","paderborn","gütersloh","guetersloh")),
     ("West-Niedersachsen & französisch-deutscher Grenzraum", 2, ("west-niedersachsen","westniedersachsen","niedersachsen","osnabrück","osnabrueck","emsland","lingen","papenburg","meppen","cloppenburg","vechta","oldenburg","ammerland","grafschaft bentheim","nordhorn","aurich","leer","saarland","saarbrücken","saarbruecken","rheinland-pfalz","trier","kaiserslautern","koblenz","landau","zweibrücken","zweibruecken","kehl","ortenau")),
 ]
-PRIMARY_SOURCE_DOMAINS=["ihk-lehrstellenboerse.de","arbeitsagentur.de/jobsuche","meine-ausbildung-in-niedersachsen.de","ausbildung.nrw","meine-ausbildung.de","ihk-ausbildungsatlas.de","ausbildungsatlas.ihk.de","ausbildungsatlas.unikam.de"]
-SECTOR_SOURCE_DOMAINS=["yourfirm.de","logistikmitarbeiter.de","hotelcareer.de","hogapage.de","gastgebervonmorgen.de","dehoga.de/ausbildung","systemgastronomie-ausbildung.de","azubiyo.de"]
+# Every configured source is an independent discovery target.
+# IMPORTANT: the historical IHK-Lehrstellenbörse was discontinued on 31.12.2024;
+# the current IHK ecosystem is represented by the replacement portals below.
+PRIMARY_SOURCE_DOMAINS=[
+    "arbeitsagentur.de/jobsuche",
+    "derausbildungsatlas.de",
+    "meine-ausbildung-in-deutschland.de",
+    "ihk-boerse.de",
+    "ihk-lehrstellenboerse.de",  # legacy: keep searching if indexed pages still exist
+    "meine-ausbildung-in-niedersachsen.de",
+    "ausbildung.nrw",
+    "meine-ausbildung.de",
+    "ihk-ausbildungsatlas.de",
+    "ausbildungsatlas.ihk.de",
+    "ausbildungsatlas.unikam.de",
+]
+SECTOR_SOURCE_DOMAINS=[
+    "yourfirm.de",
+    "logistikmitarbeiter.de",
+    "hotelcareer.de",
+    "hogapage.de",
+    "gastgebervonmorgen.de",
+    "dehoga.de/ausbildung",
+    "systemgastronomie-ausbildung.de",
+    "azubiyo.de",
+]
 ALL_SOURCE_DOMAINS=PRIMARY_SOURCE_DOMAINS+SECTOR_SOURCE_DOMAINS
 ROLE_SEARCH_TERMS={
 "Hotelfachfrau / Hotelkauffrau":'"Hotelfachfrau" OR "Hotelkauffrau" OR "Hotelfachmann" OR "Hotelkaufmann"',
@@ -424,8 +448,17 @@ def _bing_search(session, query, count=EXTERNAL_SEARCH_RESULTS):
     return out
 
 def _source_search_queries():
-    return [(rn,rol,dom,f"site:{dom} {ROLE_SEARCH_TERMS[rol]} Ausbildung {REGION_SEARCH_TERMS[rn]}")
-            for rn in REGION_SEARCH_TERMS for rol in ROLE_SEARCH_TERMS for dom in ALL_SOURCE_DOMAINS]
+    # One independent query per configured source, target role and target region.
+    # Do NOT collapse sources into one generic search: every domain in
+    # ALL_SOURCE_DOMAINS must be explicitly queried on every run.
+    return [
+        (rn, rol, dom, f"site:{dom} {ROLE_SEARCH_TERMS[rol]} Ausbildung {REGION_SEARCH_TERMS[rn]}")
+        for dom in ALL_SOURCE_DOMAINS
+        for rn in REGION_SEARCH_TERMS
+        for rol in ROLE_SEARCH_TERMS
+    ]
+
+
 
 def _collect_external_links():
     session=make_session(); found=[]; seen=set(); queries=_source_search_queries()
@@ -500,7 +533,11 @@ def _iter_external_links():
     session = make_session()
     seen = set()
     queries = _source_search_queries()
-    print(f"[*] Multi-source search: {len(queries)} source/region/role queries x 2 search engines; every configured source is visited every run.")
+    print(
+        f"[*] MULTI-SOURCE IMPÉRATIF: {len(ALL_SOURCE_DOMAINS)} sources | "
+        f"{len(REGION_SEARCH_TERMS)} régions | {len(ROLE_SEARCH_TERMS)} métiers | "
+        f"{len(queries)} requêtes source/métier/région x 2 moteurs"
+    )
 
     for n, (rn, rol, dom, q) in enumerate(queries, 1):
         if scrape_time_exhausted():
