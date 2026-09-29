@@ -641,41 +641,174 @@ function getTitreAusbildung(
   "Ausbildungsplatz";
 }
 
-function getCV(intitule,roleCible){
-  const specialite=detecterSpecialite(intitule,roleCible), filename=CONFIG.CV_MAPPING[specialite];
-  if(!specialite||!filename) return null;
-
-  const folders=DriveApp.getFoldersByName(CONFIG.CV_FOLDER_NAME);
-  if(!folders.hasNext()){Logger.log("[CV] Dossier introuvable: "+CONFIG.CV_FOLDER_NAME);return null;}
-  const folder=folders.next();
-
-  // 1) Exact filename match.
-  const exact=folder.getFilesByName(filename);
-  if(exact.hasNext()) return exact.next();
-
-  // 2) Strict role-keyword fallback inside the same folder, so renamed PDFs
-  // still work without ever falling back to another Ausbildung.
-  const keywords={
-    hotelfachfrau:["hotelfachfrau","hotelfachmann","hotelkkauffrau","hotelkauffrau","hotelkaufmann"],
-    systemgastronomie:["systemgastronomie"],
-    einzelhandel:["einzelhandel"],
-    spedition:["spedition","logistikdienstleistung"],
-    handel:["gross","groß","aussenhandel","außenhandel"],
-    industrie:["industriekauffrau","industriekaufmann"]
-  }[specialite]||[];
-
-  const files=folder.getFiles();
-  while(files.hasNext()){
-    const file=files.next();
-    const name=file.getName().toLowerCase();
-    if(keywords.some(k=>name.includes(k))) return file;
-  }
-
-  Logger.log("[CV] Kein passender CV in "+CONFIG.CV_FOLDER_NAME+" für "+specialite);
-  return null;
+function normaliserNomCV(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\\u0300-\\u036f]/g, "")
+    .replace(/\\.pdf$/i, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\\s+/g, " ")
+    .trim();
 }
 
+function distanceLevenshteinCV(a, b) {
+  a = String(a || "");
+  b = String(b || "");
+  const prev = Array(b.length + 1);
+  const curr = Array(b.length + 1);
 
+  for (let j = 0; j <= b.length; j++) prev[j] = j;
+
+  for (let i = 1; i <= a.length; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(
+        curr[j - 1] + 1,
+        prev[j] + 1,
+        prev[j - 1] + cost
+      );
+    }
+    for (let j = 0; j <= b.length; j++) prev[j] = curr[j];
+  }
+
+  return prev[b.length];
+}
+
+function scoreCVFilename(filename, specialite) {
+  const name = normaliserNomCV(filename);
+  const compact = name.replace(/ /g, "");
+
+  const keywords = {
+    hotelfachfrau: [
+      ["hotelfachfrau", 100], ["hotelfachmann", 100],
+      ["hotelkauffrau", 90], ["hotelkaufmann", 90], ["hotel", 45]
+    ],
+    systemgastronomie: [
+      ["systemgastronomie", 110], ["gastronomie", 55], ["gastro", 35]
+    ],
+    einzelhandel: [
+      ["einzelhandel", 120], ["kauffrau im einzelhandel", 120],
+      ["kaufmann im einzelhandel", 120], ["handel", 35]
+    ],
+    spedition: [
+      ["spedition", 120], ["logistikdienstleistung", 115],
+      ["logistik", 65], ["speditionskauf", 100]
+    ],
+    // IMPORTANT: "handel" uses the Einzelhandel CV according to the user's mapping.
+    handel: [
+      ["einzelhandel", 140], ["kauffrau im einzelhandel", 140],
+      ["gross und aussenhandelsmanagement", 130],
+      ["grossaussenhandel", 130], ["grosshandel", 100],
+      ["aussenhandel", 100], ["handel", 45]
+    ],
+    industrie: [
+      ["industriekauffrau", 125], ["industriekaufmann", 125],
+      ["industrie", 50]
+    ]
+  };
+
+  const candidates = keywords[specialite] || [];
+  let score = 0;
+
+  for (const [keyword, weight] of candidates) {
+    const k = normaliserNomCV(keyword);
+    if (name.includes(k)) {
+      score = Math.max(score, weight);
+      continue;
+    }
+
+    // Tolerates small filename variations/typos such as:
+    // "Industriekauffrau" vs "Industriekaufrau", etc.
+    const words = k.split(" ");
+    for (const word of words) {
+      if (word.length < 5) continue;
+      if (compact.includes(word)) {
+        score = Math.max(score, weight - 10);
+        continue;
+      }
+
+      const nameWords = name.split(" ");
+      for (const nw of nameWords) {
+        if (nw.length < 5) continue;
+        const maxDistance = word.length >= 12 ? 3 : 2;
+        const distance = distanceLevenshteinCV(word, nw);
+        if (distance <= maxDistance) {
+          score = Math.max(score, weight - (distance * 8) - 15);
+        }
+      }
+    }
+  }
+
+  // Prefer a Bewerbungsmappe/application PDF when several files are similar.
+  if (/bewerbung|bewerbungsmappe|bewerbungsunterlagen/.test(name)) score += 8;
+  if (!/\\.pdf$/i.test(filename)) score -= 20;
+
+  return score;
+}
+
+function getCV(intitule, roleCible){
+  const specialite = detecterSpecialite(intitule, roleCible);
+  const filename = CONFIG.CV_MAPPING[specialite];
+  if (!specialite || !filename) return null;
+
+  // Cache the Drive folder file list once per Apps Script execution.
+  // This avoids scanning Drive separately for every Sheet row.
+  if (!getCV._files) {
+    getCV._files = [];
+    const folders = DriveApp.getFoldersByName(CONFIG.CV_FOLDER_NAME);
+
+    if (!folders.hasNext()) {
+      Logger.log("[CV] Dossier introuvable: " + CONFIG.CV_FOLDER_NAME);
+      return null;
+    }
+
+    const folder = folders.next();
+    const files = folder.getFiles();
+
+    while (files.hasNext()) {
+      const file = files.next();
+      getCV._files.push({
+        file: file,
+        name: file.getName()
+      });
+    }
+
+    Logger.log("[CV] Index Drive construit : " + getCV._files.length + " fichier(s).");
+  }
+
+  // 1) Exact filename match.
+  const exactName = normaliserNomCV(filename);
+  for (const entry of getCV._files) {
+    if (normaliserNomCV(entry.name) === exactName) {
+      Logger.log("[CV] Exact → " + entry.name + " pour " + specialite);
+      return entry.file;
+    }
+  }
+
+  // 2) Fuzzy keyword match.
+  // Never returns a CV from an unrelated specialty: the score must reach
+  // a strong specialty-specific threshold.
+  let best = null;
+  let bestScore = 0;
+
+  for (const entry of getCV._files) {
+    const score = scoreCVFilename(entry.name, specialite);
+    if (score > bestScore) {
+      bestScore = score;
+      best = entry;
+    }
+  }
+
+  if (best && bestScore >= 55) {
+    Logger.log("[CV] Fuzzy → " + best.name + " pour " + specialite + " (score " + bestScore + ")");
+    return best.file;
+  }
+
+  Logger.log("[CV] Aucun CV suffisamment proche pour " + specialite + " (meilleur score " + bestScore + ")");
+  return null;
+}
 
 
 // ─────────────────────────────────────────────────────────────────────────────
