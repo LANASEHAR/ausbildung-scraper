@@ -2,12 +2,16 @@ name: Send Ausbildung Emails (SMTP)
 
 on:
   schedule:
-    - cron: '15 */2 * * *' # Toutes les 2 heures
+    - cron: '17 */2 * * *' # Toutes les 2 heures — décalé des heures pleines
   workflow_dispatch:       # Permet de le lancer manuellement en 1 clic
 
 jobs:
   send-emails:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: ausbildung-email-sender
+      cancel-in-progress: false
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -26,4 +30,18 @@ jobs:
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           GMAIL_USER: "essaouafhalima@gmail.com"
           BATCH_LIMIT: "80"
-        run: python send_emails_smtp.py
+        run: |
+          set -e
+          for attempt in 1 2 3; do
+            echo "SMTP sender attempt $attempt/3"
+            if python send_emails_smtp.py; then
+              echo "SMTP sender completed successfully"
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Transient failure — retrying in 45 seconds..."
+              sleep 45
+            fi
+          done
+          echo "SMTP sender failed after 3 attempts"
+          exit 1
