@@ -357,9 +357,12 @@ def main():
 
                 except smtplib.SMTPResponseException as e:
                     print(f"❌ Erreur SMTP ligne {row_index} ({email_cible}): {e.smtp_code} - {e.smtp_error}")
-                    if e.smtp_code in (421, 450, 452, 550, 554):
-                        print("⛔ Gmail SMTP a refusé l'envoi. Arrêt pour éviter les doublons/blocages.")
-                        return
+                    if e.smtp_code in (421, 450, 452):
+                        print("⛔ Gmail SMTP est temporairement indisponible/throttlé. Arrêt du run pour retry.")
+                        raise RuntimeError(f"SMTP temporaire: {e.smtp_code}")
+                    if e.smtp_code in (550, 554):
+                        print("⚠️ Destinataire refusé par Gmail — on ignore cette ligne et on continue vers le prochain candidat.")
+                        continue
                 except Exception as e:
                     print(f"❌ Erreur ligne {row_index} ({email_cible}): {e}")
 
@@ -368,6 +371,12 @@ def main():
             if page_new_rows == 0:
                 break
             fetch_offset += len(items)
+
+    if compteur < target:
+        raise RuntimeError(
+            f"Seulement {compteur}/{target} e-mails effectivement envoyés. "
+            "Le run est considéré comme incomplet afin que GitHub Actions puisse le relancer."
+        )
 
     print(f"🏁 Terminé — {compteur} e-mail(s) effectivement envoyé(s) via SMTP sur {target} demandés.")
 
