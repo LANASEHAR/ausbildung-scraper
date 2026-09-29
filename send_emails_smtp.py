@@ -32,6 +32,7 @@ TITRES_AUSBILDUNG = {
     "einzelhandel": "Kauffrau im Einzelhandel",
     "koch": "Koch/Köchin",
     "hotelfachfrau": "Hotelfachmann/-frau",
+    "hotelmanagement": "Kauffrau für Hotelmanagement",
     "baecker": "Bäcker/in",
     "systemgastronomie": "Fachfrau/Fachmann für Systemgastronomie",
     "spedition": "Kauffrau für Spedition und Logistikdienstleistung",
@@ -62,6 +63,11 @@ MOTIVATIONS = {
         "betreute ich ein internationales B2B-Kundenportfolio im Bereich Hotellerie und Travel und arbeitete "
         "täglich mit Geschäftspartnern auf Arabisch, Französisch und Englisch. Diese Erfahrung möchte ich nun "
         "mit einer Ausbildung in Deutschland und einem anerkannten IHK-Abschluss weiterentwickeln."
+    ),
+    "hotelmanagement": (
+        "Die Verbindung von Hotellerie, Kundenorientierung und kaufmännischer Organisation spricht mich besonders an. "
+        "Durch meine Erfahrung bei HBX Group / Hotelbeds im internationalen B2B-Umfeld bringe ich bereits einen direkten Bezug zur Hotelbranche mit. "
+        "Diese Erfahrung möchte ich nun mit einer fundierten Ausbildung zur Kauffrau für Hotelmanagement und einem anerkannten IHK-Abschluss weiterentwickeln."
     ),
     "baecker": (
         "Sorgfalt, Kundenorientierung und zuverlässiges Arbeiten gehören zu meinen bisherigen beruflichen "
