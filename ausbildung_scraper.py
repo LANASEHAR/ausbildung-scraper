@@ -36,17 +36,19 @@ SEARCH_QUERIES = [
     "Fachverkäufer Konditorei Ausbildung", "Fachverkäuferin Konditorei Ausbildung",
     "Fachverkäufer Fleischerei Ausbildung", "Fachverkäuferin Fleischerei Ausbildung",
     "Kauffrau im Einzelhandel Ausbildung", "Kaufmann im Einzelhandel Ausbildung", "Kauffrau/Kaufmann im Einzelhandel Ausbildung",
-    # P2 — Küche
+    # P2 — Logistique / Küche
+    "Kauffrau für Spedition und Logistikdienstleistung Ausbildung", "Kaufmann für Spedition und Logistikdienstleistung Ausbildung", "Kauffrau/Kaufmann für Spedition und Logistikdienstleistung Ausbildung",
+    "Kauffrau für Hotelmanagement Ausbildung", "Kaufmann für Hotelmanagement Ausbildung", "Kauffrau/Kaufmann für Hotelmanagement Ausbildung",
     "Koch Ausbildung", "Köchin Ausbildung", "Koch/Köchin Ausbildung",
     "Koch m/w/d Ausbildung", "Köchin m/w/d Ausbildung", "Ausbildung Koch Köchin",
     # P3 — Hotellerie / Bäckerei / Systemgastronomie
     "Hotelfachfrau Ausbildung", "Hotelfachmann Ausbildung", "Hotelfachfrau/-mann Ausbildung", "Hotelfachmann/-frau Ausbildung",
+    "Kauffrau für Hotelmanagement Ausbildung", "Kaufmann für Hotelmanagement Ausbildung", "Kauffrau/Kaufmann für Hotelmanagement Ausbildung",
     "Bäcker Ausbildung", "Bäckerin Ausbildung", "Bäcker/Bäckerin Ausbildung", "Bäcker/in Ausbildung",
     "Bäckerei Ausbildung", "Konditorei Ausbildung",
     "Fachfrau für Systemgastronomie Ausbildung", "Fachmann für Systemgastronomie Ausbildung",
     "Fachfrau/Fachmann für Systemgastronomie Ausbildung",
     # P4+
-    "Kauffrau für Spedition und Logistikdienstleistung Ausbildung", "Kaufmann für Spedition und Logistikdienstleistung Ausbildung", "Kauffrau/Kaufmann für Spedition und Logistikdienstleistung Ausbildung",
     "Kauffrau im Groß- und Außenhandelsmanagement Ausbildung", "Kaufmann im Groß- und Außenhandelsmanagement Ausbildung", "Kauffrau/Kaufmann im Groß- und Außenhandelsmanagement Ausbildung",
     "Industriekauffrau Ausbildung", "Industriekaufmann Ausbildung", "Industriekauffrau/-mann Ausbildung",
     "Kauffrau für Büromanagement Ausbildung", "Kaufmann für Büromanagement Ausbildung", "Kauffrau/Kaufmann für Büromanagement Ausbildung",
@@ -66,11 +68,23 @@ ROLE_PRIORITY = [
         "kauffrau im einzelhandel","kaufmann im einzelhandel","kauffrau einzelhandel","kaufmann einzelhandel",
         "kaufmann/-frau im einzelhandel","kauffrau/kaufmann im einzelhandel",
     )),
+    ("Kauffrau für Spedition und Logistikdienstleistung", 9, (
+        "kauffrau für spedition und logistikdienstleistung","kauffrau fur spedition und logistikdienstleistung",
+        "kaufmann für spedition und logistikdienstleistung","kaufmann fur spedition und logistikdienstleistung",
+        "kaufmann/-frau für spedition und logistikdienstleistung","kauffrau/kaufmann für spedition und logistikdienstleistung",
+        "spedition und logistikdienstleistung","speditionskauffrau","speditionskaufmann",
+    )),
     ("Koch/Köchin", 8, (
         "koch","köchin","koechin","koch/ köchin","koch/köchin","koch/-frau",
         "ausbildung koch","ausbildung köchin",
     )),
-    ("Hotelfachmann/-frau", 7, (
+    ("Kauffrau für Hotelmanagement", 7, (
+        "kauffrau für hotelmanagement","kauffrau fur hotelmanagement",
+        "kaufmann für hotelmanagement","kaufmann fur hotelmanagement",
+        "kaufmann/-frau für hotelmanagement","kauffrau/kaufmann für hotelmanagement",
+        "hotelmanagement kaufmännisch","hotelmanagement kaufmannisch",
+    )),
+    ("Hotelfachmann/-frau", 6, (
         "hotelfachfrau","hotelfachmann","hotelfachfrau/-mann","hotelfachmann/-frau",
         "hotelkauffrau","hotelkaufmann","hotelmanagement",
     )),
@@ -175,6 +189,7 @@ ROLE_SEARCH_TERMS={
 "Kauffrau im Einzelhandel":'"Kauffrau im Einzelhandel" OR "Kaufmann im Einzelhandel" OR "Kaufmann/-frau im Einzelhandel"',
 "Koch/Köchin":'"Koch" OR "Köchin" OR "Koch/Köchin" OR "Koch/Köchin m/w/d"',
 "Hotelfachmann/-frau":'"Hotelfachfrau" OR "Hotelfachmann" OR "Hotelfachmann/-frau" OR "Hotelfachfrau/-mann" OR "Hotelkauffrau" OR "Hotelkaufmann"',
+"Kauffrau für Hotelmanagement":'"Kauffrau für Hotelmanagement" OR "Kaufmann für Hotelmanagement" OR "Kaufmann/-frau für Hotelmanagement"',
 "Bäcker/in":'"Bäcker" OR "Bäckerin" OR "Bäcker/in" OR "Bäckerei" OR "Konditorei"',
 "Fachfrau/Fachmann für Systemgastronomie":'"Fachfrau für Systemgastronomie" OR "Fachmann für Systemgastronomie" OR "Fachfrau/Fachmann für Systemgastronomie"',
 "Kauffrau für Spedition und Logistikdienstleistung":'"Kauffrau für Spedition und Logistikdienstleistung" OR "Kaufmann für Spedition und Logistikdienstleistung" OR "Kaufmann/-frau für Spedition und Logistikdienstleistung"',
