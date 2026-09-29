@@ -46,70 +46,57 @@ MOTIVATIONS = {
         "Ich bringe über fünf Jahre Erfahrung in Kundenbetreuung und Vertrieb mit und möchte diese Stärke nun "
         "gezielt im Lebensmittelhandwerk einsetzen und mit einer anerkannten Ausbildung in Deutschland verbinden."
     ),
-    "einzelhandel": (\n    "hotelfachfrau": (
-        "Die Hotellerie ist mir bereits aus meiner beruflichen Erfahrung vertraut. "
-        "Bei HBX Group / Hotelbeds betreute ich ein internationales B2B-Kundenportfolio "
-        "im Bereich Hotellerie und Travel im Nahen Osten und arbeitete täglich mit "
-        "Geschäftspartnern auf Arabisch, Französisch und Englisch. Insgesamt bringe ich "
-        "über fünf Jahre Erfahrung in Kundenbetreuung, Vertrieb und kaufmännischen Abläufen mit. "
-        "Diese Erfahrung möchte ich nun mit einer Ausbildung in Deutschland und einem "
-        "anerkannten IHK-Abschluss weiterentwickeln."
-    ),
-    "systemgastronomie": (
-        "Auch wenn mein bisheriger beruflicher Weg nicht direkt aus der Gastronomie kommt, "
-        "bringe ich über fünf Jahre Erfahrung im Kundenservice, Vertrieb und in strukturierten "
-        "Arbeitsabläufen mit. Als Top-Verkäuferin konnte ich bereits meine Stärke in "
-        "Kundenkommunikation und Beratung unter Beweis stellen. Diese Erfahrung möchte ich nun "
-        "in die Systemgastronomie einbringen und die professionellen Abläufe in Deutschland "
-        "von Grund auf erlernen."
-    ),
     "einzelhandel": (
-        "Kundenberatung und Verkauf begleiten mich seit mehreren Jahren. In über fünf Jahren "
-        "Berufserfahrung habe ich im B2B- und B2C-Vertrieb sowie im Kundenservice gearbeitet "
-        "und wurde bei Umanis Intermediation aufgrund meiner Beratungsqualität und Abschlussstärke "
-        "als Top-Verkäuferin ausgezeichnet. Heute gehören außerdem Bestandsüberwachung, "
-        "Auftragsabwicklung und kaufmännische Aufgaben zu meinem Arbeitsalltag. Diese Erfahrung "
-        "möchte ich nun gezielt mit einer deutschen Ausbildung und einem anerkannten "
-        "IHK-Abschluss verbinden."
-    ),
-    "spedition": (
-        "Logistik und Koordination sind mir bereits aus meiner Berufserfahrung vertraut. "
-        "Bei Helpdesk ForYou koordinierte ich die Einsatzplanung von über 100 Fahrern und "
-        "Mitarbeitenden und verfolgte Touren, Termine und Wartungen. Heute arbeite ich bei "
-        "Atmlo Chem / EasyChemicalStock mit Beschaffung, Logistik, Bestandsüberwachung, "
-        "Auftragsabwicklung und Lieferanten. Insgesamt bringe ich über fünf Jahre kaufmännische "
-        "Berufserfahrung mit, die ich nun gezielt durch eine Ausbildung und einen anerkannten "
-        "IHK-Abschluss erweitern möchte."
-    ),
-    "handel": (
-        "Ich bringe über fünf Jahre Berufserfahrung in kaufmännischen Bereichen, Kundenbetreuung "
-        "und Vertrieb mit. In meiner aktuellen Tätigkeit arbeite ich unter anderem mit Beschaffung, "
-        "Lieferanten, Bestandsüberwachung und Auftragsabwicklung sowie mit Excel und Sage. "
-        "Zuvor betreute ich bei HBX Group / Hotelbeds internationale B2B-Geschäftspartner. "
-        "Diese Erfahrung möchte ich nun mit einer fundierten Ausbildung und einem anerkannten "
-        "IHK-Abschluss in Deutschland verbinden."
-    ),
-    "industrie": (
-        "Durch über fünf Jahre Berufserfahrung bringe ich bereits praktische Kenntnisse in "
-        "kaufmännischer Organisation, Beschaffung, Auftragsabwicklung und Kundenbetreuung mit. "
-        "Aktuell arbeite ich mit Lieferanten, Beständen, Rechnungen, Excel und dem ERP-System Sage. "
-        "Ich möchte diese Praxiserfahrung nun mit den kaufmännischen Prozessen eines deutschen "
-        "Unternehmens verbinden und dabei einen anerkannten IHK-Abschluss erwerben."
+        "Kundenberatung und Verkauf begleiten mich seit mehreren Jahren. In über fünf Jahren Berufserfahrung "
+        "habe ich im B2B- und B2C-Vertrieb sowie im Kundenservice gearbeitet und wurde aufgrund meiner "
+        "Beratungsqualität und Abschlussstärke als Top-Verkäuferin ausgezeichnet. Diese Erfahrung möchte ich "
+        "nun gezielt mit einer deutschen Ausbildung und einem anerkannten IHK-Abschluss verbinden."
     ),
     "koch": (
         "Die Arbeit mit Menschen, Organisation und Service gehört bereits zu meiner Berufserfahrung. "
         "Ich möchte diese Erfahrung nun in der Küche weiterentwickeln, professionelle Abläufe erlernen "
         "und eine anerkannte Ausbildung als Koch/Köchin in Deutschland absolvieren."
     ),
+    "hotelfachfrau": (
+        "Die Hotellerie ist mir bereits aus meiner beruflichen Erfahrung vertraut. Bei HBX Group / Hotelbeds "
+        "betreute ich ein internationales B2B-Kundenportfolio im Bereich Hotellerie und Travel und arbeitete "
+        "täglich mit Geschäftspartnern auf Arabisch, Französisch und Englisch. Diese Erfahrung möchte ich nun "
+        "mit einer Ausbildung in Deutschland und einem anerkannten IHK-Abschluss weiterentwickeln."
+    ),
     "baecker": (
-        "Sorgfalt, Kundenorientierung und zuverlässiges Arbeiten gehören zu meinen bisherigen beruflichen Erfahrungen. "
-        "Die Verbindung von handwerklicher Herstellung und direktem Kundenkontakt im Bäckerhandwerk spricht mich besonders an. "
-        "Diese Stärken möchte ich durch eine fundierte Ausbildung in Deutschland weiterentwickeln."
+        "Sorgfalt, Kundenorientierung und zuverlässiges Arbeiten gehören zu meinen bisherigen beruflichen "
+        "Erfahrungen. Die Verbindung von handwerklicher Herstellung und direktem Kundenkontakt im "
+        "Bäckerhandwerk spricht mich besonders an. Diese Stärken möchte ich durch eine fundierte Ausbildung "
+        "in Deutschland weiterentwickeln."
+    ),
+    "systemgastronomie": (
+        "Auch wenn mein bisheriger beruflicher Weg nicht direkt aus der Gastronomie kommt, bringe ich über "
+        "fünf Jahre Erfahrung im Kundenservice, Vertrieb und in strukturierten Arbeitsabläufen mit. "
+        "Diese Erfahrung möchte ich nun in die Systemgastronomie einbringen und die professionellen Abläufe "
+        "in Deutschland von Grund auf erlernen."
+    ),
+    "spedition": (
+        "Logistik und Koordination sind mir bereits aus meiner Berufserfahrung vertraut. Bei Helpdesk ForYou "
+        "koordinierte ich die Einsatzplanung von über 100 Fahrern und Mitarbeitenden. Heute arbeite ich mit "
+        "Beschaffung, Logistik, Bestandsüberwachung, Auftragsabwicklung und Lieferanten. Diese Erfahrung "
+        "möchte ich nun gezielt durch eine Ausbildung und einen anerkannten IHK-Abschluss erweitern."
+    ),
+    "handel": (
+        "Ich bringe über fünf Jahre Berufserfahrung in kaufmännischen Bereichen, Kundenbetreuung und Vertrieb "
+        "mit. In meiner aktuellen Tätigkeit arbeite ich unter anderem mit Beschaffung, Lieferanten, "
+        "Bestandsüberwachung und Auftragsabwicklung sowie mit Excel und Sage. Diese Erfahrung möchte ich nun "
+        "mit einer fundierten Ausbildung und einem anerkannten IHK-Abschluss in Deutschland verbinden."
+    ),
+    "industrie": (
+        "Durch über fünf Jahre Berufserfahrung bringe ich bereits praktische Kenntnisse in kaufmännischer "
+        "Organisation, Beschaffung, Auftragsabwicklung und Kundenbetreuung mit. Aktuell arbeite ich mit "
+        "Lieferanten, Beständen, Rechnungen, Excel und dem ERP-System Sage. Diese Praxiserfahrung möchte ich "
+        "nun mit den kaufmännischen Prozessen eines deutschen Unternehmens verbinden."
     ),
     "buero": (
         "Ich bringe über fünf Jahre Erfahrung in Kundenbetreuung, Vertrieb und kaufmännischen Abläufen mit. "
-        "Organisation, Kommunikation und strukturierte Bearbeitung gehören zu meinem Arbeitsalltag. "
-        "Diese Erfahrung möchte ich nun mit einer anerkannten Ausbildung für Büromanagement in Deutschland vertiefen."
+        "Organisation, Kommunikation und strukturierte Bearbeitung gehören zu meinem Arbeitsalltag. Diese "
+        "Erfahrung möchte ich nun mit einer anerkannten Ausbildung für Büromanagement in Deutschland vertiefen."
     ),
 }
 
