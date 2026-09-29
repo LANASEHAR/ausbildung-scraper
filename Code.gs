@@ -427,23 +427,25 @@ function doPost(e) {
     // email valide, spécialité reconnue, CV présent, et statut/date compatibles.
     if (rawData && rawData.action === "get_pending") {
       const limit = Math.min(500, Math.max(1, Number(rawData.limit || 80)));
+      const allowRetries = rawData.allow_retries !== false;
+      const retryMinAgeHours = Math.max(0, Number(rawData.retry_min_age_hours || 2));
       const items = [];
       const cvCache = {};
       const sentEmails = buildSheetIndexes(allData).sentEmails;
       const seenEmails = new Set();
+      const retryCandidates = [];
 
-      for (let i = 1; i < allData.length && items.length < limit; i++) {
+      function pushCandidate(i, type) {
+        if (items.length >= limit) return false;
+
         const row = allData[i];
-        const statut = String(row[COL.STATUT] || "").trim();
         const email = extractFirstEmail(row[COL.EMAILS_RH] || "");
-
-        if (!email || !isValidEmail(email) || email.includes("..")) continue;
-        if (seenEmails.has(email)) continue;
+        if (!email || !isValidEmail(email) || seenEmails.has(email)) return false;
 
         const intitule = String(row[COL.INTITULE] || "").trim();
         const roleCible = String(row[COL.ROLE_CIBLE] || "").trim();
         const specialite = detecterSpecialite(intitule, roleCible);
-        if (!specialite || !(specialite in CONFIG.CV_MAPPING)) continue;
+        if (!specialite || !(specialite in CONFIG.CV_MAPPING)) return false;
 
         if (!(specialite in cvCache)) {
           try {
@@ -453,25 +455,7 @@ function doPost(e) {
             Logger.log("[GET_PENDING] CV erreur " + specialite + ": " + err.toString());
           }
         }
-        if (!cvCache[specialite]) continue;
-
-        let type = "";
-        if (statut === "NOUVEAU") {
-          // Une candidature initiale ne doit jamais repartir vers une adresse
-          // déjà contactée historiquement.
-          if (sentEmails.has(email)) continue;
-          type = "INITIAL";
-        } else if (statut === "CANDIDATURE_ENVOYEE") {
-          const dateEnvoi = row[COL.DATE_CANDIDATURE]
-            ? new Date(row[COL.DATE_CANDIDATURE])
-            : null;
-          if (!dateEnvoi) continue;
-          const diffHeures = (new Date() - dateEnvoi) / (1000 * 60 * 60);
-          if (diffHeures < CONFIG.DELAI_RELANCE_H) continue;
-          type = "RELANCE";
-        } else {
-          continue;
-        }
+        if (!cvCache[specialite]) return false;
 
         seenEmails.add(email);
         items.push({
@@ -483,6 +467,90 @@ function doPost(e) {
           entreprise: String(row[COL.ENTREPRISE] || "").trim(),
           specialite: specialite
         });
+        return true;
+      }
+
+      // 1) Priorité absolue : nouvelles candidatures jamais envoyées.
+      for (let i = 1; i < allData.length && items.length < limit; i++) {
+        const row = allData[i];
+        const statut = String(row[COL.STATUT] || "").trim();
+        if (statut !== "NOUVEAU") continue;
+
+        const email = extractFirstEmail(row[COL.EMAILS_RH] || "");
+        if (!email || sentEmails.has(email)) continue;
+
+        pushCandidate(i, "INITIAL");
+      }
+
+      // 2) Ensuite : relances normales après le délai configuré.
+      for (let i = 1; i < allData.length && items.length < limit; i++) {
+        const row = allData[i];
+        const statut = String(row[COL.STATUT] || "").trim();
+        if (statut !== "CANDIDATURE_ENVOYEE") continue;
+
+        const dateEnvoi = row[COL.DATE_CANDIDATURE]
+          ? new Date(row[COL.DATE_CANDIDATURE])
+          : null;
+        if (!dateEnvoi || isNaN(dateEnvoi.getTime())) continue;
+
+        const diffHeures = (new Date() - dateEnvoi) / (1000 * 60 * 60);
+        if (diffHeures < CONFIG.DELAI_RELANCE_H) continue;
+
+        pushCandidate(i, "RELANCE");
+      }
+
+      // 3) File de secours : si on n'arrive pas à 80 avec les nouvelles
+      // candidatures + relances normales, réutiliser des candidatures déjà
+      // envoyées. On impose un âge minimal de 2h pour éviter qu'un retry du
+      // même workflow renvoie immédiatement les mêmes emails.
+      if (allowRetries && items.length < limit) {
+        const now = new Date();
+
+        for (let i = 1; i < allData.length && items.length < limit; i++) {
+          const row = allData[i];
+          const statut = String(row[COL.STATUT] || "").trim();
+
+          if (statut !== "CANDIDATURE_ENVOYEE" && statut !== "RELANCE_EFFECTUEE") {
+            continue;
+          }
+
+          const email = extractFirstEmail(row[COL.EMAILS_RH] || "");
+          if (!email || !sentEmails.has(email) || seenEmails.has(email)) continue;
+
+          const dateDernierEnvoi =
+            statut === "RELANCE_EFFECTUEE" && row[COL.DATE_RELANCE]
+              ? new Date(row[COL.DATE_RELANCE])
+              : row[COL.DATE_CANDIDATURE]
+                ? new Date(row[COL.DATE_CANDIDATURE])
+                : null;
+
+          if (!dateDernierEnvoi || isNaN(dateDernierEnvoi.getTime())) continue;
+
+          const ageHeures = (now - dateDernierEnvoi) / (1000 * 60 * 60);
+          if (ageHeures < retryMinAgeHours) continue;
+
+          retryCandidates.push(i);
+        }
+
+        // Les plus anciens envois sont repris en premier.
+        retryCandidates.sort((a, b) => {
+          const da = new Date(
+            allData[a][COL.DATE_RELANCE] ||
+            allData[a][COL.DATE_CANDIDATURE] ||
+            0
+          ).getTime() || 0;
+          const db = new Date(
+            allData[b][COL.DATE_RELANCE] ||
+            allData[b][COL.DATE_CANDIDATURE] ||
+            0
+          ).getTime() || 0;
+          return da - db;
+        });
+
+        for (const i of retryCandidates) {
+          if (items.length >= limit) break;
+          pushCandidate(i, "RETRY");
+        }
       }
 
       return ContentService
@@ -491,7 +559,58 @@ function doPost(e) {
           action: "get_pending",
           returned: items.length,
           requested: limit,
+          allow_retries: allowRetries,
+          retry_min_age_hours: retryMinAgeHours,
           items: items
+        }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // ── MODE MARK_SENT : enregistre chaque envoi SMTP confirmé ────────────
+    if (rawData && rawData.action === "mark_sent") {
+      const updates = Array.isArray(rawData.updates) ? rawData.updates : [];
+      let updated = 0;
+      let missingRows = 0;
+
+      for (const update of updates) {
+        const rowNumber = Number(update.row_index || 0);
+        if (rowNumber < 2 || rowNumber > allData.length) {
+          missingRows++;
+          continue;
+        }
+
+        const rowIndex = rowNumber - 1;
+        const status = String(update.statut || "CANDIDATURE_ENVOYEE").trim();
+        const cvUtilise = String(update.cv_utilise || "").trim();
+        const now = new Date();
+
+        allData[rowIndex][COL.STATUT] = status;
+
+        if (cvUtilise) {
+          allData[rowIndex][COL.CV_UTILISE] = cvUtilise;
+        }
+
+        if (status === "CANDIDATURE_ENVOYEE") {
+          allData[rowIndex][COL.DATE_CANDIDATURE] = now;
+        } else {
+          allData[rowIndex][COL.DATE_RELANCE] = now;
+          const currentCount = Number(allData[rowIndex][COL.NOMBRE_RELANCES] || 0);
+          allData[rowIndex][COL.NOMBRE_RELANCES] = currentCount + 1;
+        }
+
+        updated++;
+      }
+
+      if (updated > 0) {
+        sheet.getRange(1, 1, allData.length, allData[0].length).setValues(allData);
+      }
+
+      return ContentService
+        .createTextOutput(JSON.stringify({
+          status: "success",
+          action: "mark_sent",
+          updated: updated,
+          missing_rows: missingRows
         }))
         .setMimeType(ContentService.MimeType.JSON);
     }
