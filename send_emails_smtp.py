@@ -227,7 +227,7 @@ def is_valid_email(email: str) -> bool:
     value = value.replace("\\@", "@").replace("mailto:", "")
     if not value or len(value) > 254:
         return False
-    if not re.fullmatch(r"[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+", value):
+    if not re.fullmatch(r"[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+", value):
         return False
     local, domain = value.rsplit("@", 1)
     return ".." not in local and ".." not in domain
