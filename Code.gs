@@ -1480,14 +1480,14 @@ function getDispatchLimitGMT_() {
     9: 12,
     10: 10,
     11: 8,
-    12: 6,
-    13: 4,
-    14: 0,
-    15: 4,
-    16: 3,
-    17: 0,
-    18: 2,
-    19: 0
+    12: 4,
+    13: 3,
+    14: 2,
+    15: 2,
+    16: 1,
+    17: 1,
+    18: 1,
+    19: 1
   };
   return Object.prototype.hasOwnProperty.call(limitsByHour, hour)
     ? limitsByHour[hour]
