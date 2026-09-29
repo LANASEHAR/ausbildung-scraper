@@ -5,12 +5,12 @@ on:
     branches:
       - main
   schedule:
-    # Two complete collections per day at 06:00 and 18:00 UTC.
-    - cron: '0 6,18 * * *'
+    # Complete collection every 2 hours.
+    - cron: '0 */2 * * *'
   workflow_dispatch:
 
 concurrency:
-  group: ausbildung-twice-daily-scraper
+  group: ausbildung-two-hour-scraper
   cancel-in-progress: false
 
 permissions:
@@ -62,7 +62,6 @@ jobs:
           assert hasattr(daily_runner, "process_batch")
           assert os.environ.get("GOOGLE_SHEET_WEBHOOK_URL"), "GOOGLE_SHEET_WEBHOOK_URL is missing"
 
-          # Offline smoke tests for the helpers that previously failed only at runtime.
           assert scraper.clean("  A   B  ") == "A B"
           assert scraper.valid_email("Test@Example.de") == "test@example.de"
           assert scraper.first_email("Kontakt: test [at] example.de") == "test@example.de"
@@ -89,7 +88,7 @@ jobs:
           print("Preflight OK — syntax, undefined names, helpers and BA parser smoke test passed")
           PY
 
-      - name: Run twice-daily time-budget scraper
+      - name: Run two-hour scraper
         if: github.event_name != 'push'
         env:
           GOOGLE_SHEET_WEBHOOK_URL: ${{ secrets.GOOGLE_SHEET_WEBHOOK_URL }}
