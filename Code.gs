@@ -1206,7 +1206,7 @@ function getSignatureHTML() {
     <td>
       <strong style="font-size: 14px; color: #1a1a1a;">${CONFIG.NOM}</strong><br>
       <span style="color: #666;">Bewerberin – Ausbildung in Deutschland</span><br><br>
-      📧 <a href="mailto:${CONFIG.EMAIL}" style="color: #1a73e8;">${CONFIG.EMAIL}</a><br>
+      📧 <a href="mailto:${Session.getEffectiveUser().getEmail() || CONFIG.EMAIL}" style="color: #1a73e8;">${Session.getEffectiveUser().getEmail() || CONFIG.EMAIL}</a><br>
       📞 ${CONFIG.TEL}<br>
       🔗 <a href="https://${CONFIG.LINKEDIN}" style="color: #1a73e8;">${CONFIG.LINKEDIN}</a>
     </td>
@@ -1692,19 +1692,22 @@ function traiterAusbildungCandidatures() {
  * Supprime les anciens triggers du même nom pour éviter les doublons.
  */
 function configurerDeclencheurs() {
-  // GitHub Actions is the only email scheduler now.
-  // Running this function removes any legacy Apps Script email trigger.
-  let removed = 0;
-
+  // Each Gmail account must create its own installable trigger.
+  // Google runs each trigger under the account that created it.
   ScriptApp.getProjectTriggers().forEach(trigger => {
     if (trigger.getHandlerFunction() === "traiterAusbildungCandidatures") {
       ScriptApp.deleteTrigger(trigger);
-      removed++;
     }
   });
 
-  Logger.log("🧹 " + removed + " ancien(s) trigger(s) email Apps Script supprimé(s).");
-  Logger.log("✅ Les emails sont désormais planifiés uniquement par GitHub Actions.");
+  ScriptApp.newTrigger("traiterAusbildungCandidatures")
+    .timeBased()
+    .everyHours(1)
+    .create();
+
+  Logger.log("✅ Trigger Apps Script installé pour le compte : " +
+    (Session.getEffectiveUser().getEmail() || "inconnu"));
+  Logger.log("   → Plafond : 95 destinataires par jour pour ce compte.");
 }
 
 /**
