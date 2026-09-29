@@ -496,6 +496,21 @@ function doPost(e) {
     // calls inside large loops.
     lock.waitLock(25000);
 
+    // ── MODE RESERVE_SEND / RELEASE_SEND : quota SMTP persistante ─────────
+    if (rawData && rawData.action === "reserve_send") {
+      const result = reserveSmtpSend_();
+      return ContentService
+        .createTextOutput(JSON.stringify(result))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (rawData && rawData.action === "release_send") {
+      const result = releaseSmtpSend_(String(rawData.token || ""));
+      return ContentService
+        .createTextOutput(JSON.stringify(result))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
     const sheet = getSheet();
     ensureTrackingColumns(sheet);
     const allData = sheet.getDataRange().getValues();
@@ -663,7 +678,12 @@ function doPost(e) {
         const rowIndex = rowNumber - 1;
         const status = String(update.statut || "CANDIDATURE_ENVOYEE").trim();
         const cvUtilise = String(update.cv_utilise || "").trim();
+        const reservationToken = String(update.reservation_token || "").trim();
         const now = new Date();
+
+        // Finalize the persistent SMTP quota only after the SMTP server has
+        // accepted the message. The token makes this idempotent on webhook retry.
+        finalizeSmtpSend_(reservationToken);
 
         // IMPORTANT: write only the cells changed by the email sender.
         // Never rewrite the whole Sheet here, so a scraper run happening at
