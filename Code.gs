@@ -318,6 +318,82 @@ function doPost(e) {
     const allData = sheet.getDataRange().getValues();
     const { existingIds, existingEmails } = buildSheetIndexes(allData);
 
+
+    // ── MODE GET_PENDING : uniquement des candidatures réellement envoyables ───
+    // Le sender SMTP demande un nombre d'e-mails, pas un nombre de lignes.
+    // On filtre ici les lignes inutilisables avant de les transmettre :
+    // email valide, spécialité reconnue, CV présent, et statut/date compatibles.
+    if (rawData && rawData.action === "get_pending") {
+      const limit = Math.min(500, Math.max(1, Number(rawData.limit || 80)));
+      const items = [];
+      const cvCache = {};
+      const sentEmails = buildSheetIndexes(allData).sentEmails;
+      const seenEmails = new Set();
+
+      for (let i = 1; i < allData.length && items.length < limit; i++) {
+        const row = allData[i];
+        const statut = String(row[COL.STATUT] || "").trim();
+        const email = extractFirstEmail(row[COL.EMAILS_RH] || "");
+
+        if (!email || !isValidEmail(email) || email.includes("..")) continue;
+        if (seenEmails.has(email)) continue;
+
+        const intitule = String(row[COL.INTITULE] || "").trim();
+        const roleCible = String(row[COL.ROLE_CIBLE] || "").trim();
+        const specialite = detecterSpecialite(intitule, roleCible);
+        if (!specialite || !(specialite in CONFIG.CV_MAPPING)) continue;
+
+        if (!(specialite in cvCache)) {
+          try {
+            cvCache[specialite] = getCV(intitule, roleCible);
+          } catch (err) {
+            cvCache[specialite] = null;
+            Logger.log("[GET_PENDING] CV erreur " + specialite + ": " + err.toString());
+          }
+        }
+        if (!cvCache[specialite]) continue;
+
+        let type = "";
+        if (statut === "NOUVEAU") {
+          // Une candidature initiale ne doit jamais repartir vers une adresse
+          // déjà contactée historiquement.
+          if (sentEmails.has(email)) continue;
+          type = "INITIAL";
+        } else if (statut === "CANDIDATURE_ENVOYEE") {
+          const dateEnvoi = row[COL.DATE_CANDIDATURE]
+            ? new Date(row[COL.DATE_CANDIDATURE])
+            : null;
+          if (!dateEnvoi) continue;
+          const diffHeures = (new Date() - dateEnvoi) / (1000 * 60 * 60);
+          if (diffHeures < CONFIG.DELAI_RELANCE_H) continue;
+          type = "RELANCE";
+        } else {
+          continue;
+        }
+
+        seenEmails.add(email);
+        items.push({
+          row_index: i + 1,
+          type: type,
+          emails_rh: email,
+          intitule: intitule,
+          role_cible: roleCible,
+          entreprise: String(row[COL.ENTREPRISE] || "").trim(),
+          specialite: specialite
+        });
+      }
+
+      return ContentService
+        .createTextOutput(JSON.stringify({
+          status: "success",
+          action: "get_pending",
+          returned: items.length,
+          requested: limit,
+          items: items
+        }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
     // ── MODE EXPORT_MISSING_EMAILS : lecture des lignes sans email ─────────
     // Utilisé par le workflow GitHub d'enrichissement. La lecture est paginée
     // pour éviter une réponse énorme et pour laisser le workflow reprendre
