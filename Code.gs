@@ -148,9 +148,90 @@ function buildSheetIndexes(data) {
 function formatDateDE(date) {
   const d = new Date(date);
   const pad = n => String(n).padStart(2, "0");
-  return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return pad(d.getDate()) + "." + pad(d.getMonth() + 1) + "." + d.getFullYear() + " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// QUOTA SMTP — PLAFOND PERSISTANT SUR 24 H
+// ─────────────────────────────────────────────────────────────────────────────
+// Le compteur est stocké dans PropertiesService, pas dans le runner GitHub.
+// Il survit donc aux runs et applique une vraie fenêtre glissante de 24 h.
+// Les réservations temporaires empêchent un crash entre SMTP et mark_sent
+// de permettre au run suivant de dépasser le plafond.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SMTP_ROLLING_24H_LIMIT = 100;
+const SMTP_RESERVATION_TTL_MS = 30 * 60 * 1000;
+const SMTP_QUOTA_PROPERTY = "SMTP_ROLLING_24H_STATE_V1";
+
+function loadSmtpQuotaState_() {
+  const props = PropertiesService.getScriptProperties();
+  let state;
+  try {
+    state = JSON.parse(props.getProperty(SMTP_QUOTA_PROPERTY) || "{}");
+  } catch (error) {
+    state = {};
+  }
+  if (!Array.isArray(state.sent)) state.sent = [];
+  if (!Array.isArray(state.reservations)) state.reservations = [];
+  const now = Date.now();
+  const cutoff = now - 24 * 60 * 60 * 1000;
+  const reservationCutoff = now - SMTP_RESERVATION_TTL_MS;
+  state.sent = state.sent.filter(ts => Number(ts) > cutoff);
+  state.reservations = state.reservations.filter(r => r && r.token && Number(r.ts) > reservationCutoff);
+  return state;
+}
+
+function saveSmtpQuotaState_(state) {
+  PropertiesService.getScriptProperties().setProperty(SMTP_QUOTA_PROPERTY, JSON.stringify(state));
+}
+
+function quotaResponse_(state, allowed, token) {
+  return {
+    status: "success",
+    allowed: allowed,
+    token: token || "",
+    sent_24h: state.sent.length,
+    reserved: state.reservations.length,
+    remaining: Math.max(0, SMTP_ROLLING_24H_LIMIT - state.sent.length - state.reservations.length),
+    limit_24h: SMTP_ROLLING_24H_LIMIT
+  };
+}
+
+function reserveSmtpSend_() {
+  const state = loadSmtpQuotaState_();
+  if (state.sent.length + state.reservations.length >= SMTP_ROLLING_24H_LIMIT) {
+    saveSmtpQuotaState_(state);
+    return quotaResponse_(state, false, "");
+  }
+  const token = Utilities.getUuid();
+  state.reservations.push({ token: token, ts: Date.now() });
+  saveSmtpQuotaState_(state);
+  return quotaResponse_(state, true, token);
+}
+
+function releaseSmtpSend_(token) {
+  const state = loadSmtpQuotaState_();
+  if (token) state.reservations = state.reservations.filter(r => r.token !== token);
+  saveSmtpQuotaState_(state);
+  return quotaResponse_(state, true, "");
+}
+
+function finalizeSmtpSend_(token) {
+  const state = loadSmtpQuotaState_();
+  let finalized = false;
+  if (token) {
+    const before = state.reservations.length;
+    state.reservations = state.reservations.filter(r => r.token !== token);
+    finalized = state.reservations.length !== before;
+    if (finalized) state.sent.push(Date.now());
+  } else {
+    state.sent.push(Date.now());
+    finalized = true;
+  }
+  saveSmtpQuotaState_(state);
+  return finalized;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WEBHOOK doPost — RÉCEPTION DES OFFRES DEPUIS LE SCRAPER PYTHON
