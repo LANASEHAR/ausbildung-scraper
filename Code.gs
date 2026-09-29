@@ -32,6 +32,7 @@ const CONFIG={
     einzelhandel:"Bewerbungsmappe_Kauffrau_im_Einzelhandel_Halima_Essaouaf.pdf",
     koch:"Bewerbungsmappe_Koch_Koechin_Halima_Essaouaf.pdf",
     hotelfachfrau:"Bewerbungsmappe_Hotelfachfrau_Halima_Essaouaf.pdf",
+    hotelmanagement:"Bewerbungsmappe_Hotelfachfrau_Halima_Essaouaf.pdf",
     baecker:"Bewerbungsmappe_Baecker_Baeckerin_Halima_Essaouaf.pdf",
     systemgastronomie:"Bewerbungsmappe_Fachfrau_fuer_Systemgastronomie_Halima_Essaouaf.pdf",
     spedition:"Bewerbungsmappe_Kauffrau_fuer_Spedition_und_Logistikdienstleistung_Halima_Essaouaf.pdf",
@@ -701,6 +702,7 @@ function detecterSpecialite(intitule,roleCible){
   if(t.includes("fachverkäufer")||t.includes("fachverkaeufer")||t.includes("lebensmittelhandwerk")||t.includes("fachverkäuferin")||t.includes("fachverkaeuferin")) return "fachverkaeufer_lebensmittel";
   if(t.includes("einzelhandel")) return "einzelhandel";
   if(t.includes("koch")||t.includes("köchin")||t.includes("koechin")) return "koch";
+  if(t.includes("kauffrau fur hotelmanagement")||t.includes("kaufmann fur hotelmanagement")||t.includes("kaufmann/-frau fur hotelmanagement")||t.includes("kauffrau/kaufmann fur hotelmanagement")) return "hotelmanagement";
   if(t.includes("hotelfach")||t.includes("hotelkauffrau")||t.includes("hotelkaufmann")||t.includes("hotelmanagement")) return "hotelfachfrau";
   if(t.includes("bäcker")||t.includes("baecker")||t.includes("bäckerei")||t.includes("baeckerei")||t.includes("konditorei")) return "baecker";
   if(t.includes("systemgastronomie")) return "systemgastronomie";
@@ -736,6 +738,9 @@ function getTitreAusbildung(
 
     hotelfachfrau:
       "Hotelfachmann/-frau",
+
+    hotelmanagement:
+      "Kauffrau für Hotelmanagement",
 
     baecker:
       "Bäcker/in",
@@ -819,6 +824,10 @@ function scoreCVFilename(filename, specialite) {
     hotelfachfrau: [
       ["hotelfachfrau", 100], ["hotelfachmann", 100],
       ["hotelkauffrau", 90], ["hotelkaufmann", 90], ["hotel", 45]
+    ],
+    hotelmanagement: [
+      ["hotelmanagement", 130], ["kauffrau fuer hotelmanagement", 130],
+      ["kaufmann fuer hotelmanagement", 125], ["hotel", 55]
     ],
     baecker: [
       ["baecker baeckerin", 135], ["baecker", 125], ["baeckerin", 125],
