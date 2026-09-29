@@ -1409,6 +1409,42 @@ ${getSignatureHTML()}
 
 
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PLAFOND PERSISTANT PAR COMPTE GMAIL — 95 ENVOIS / 24 H
+// ─────────────────────────────────────────────────────────────────────────────
+const APP_SCRIPT_SEND_LIMIT_24H = 95;
+const APP_SCRIPT_SEND_STATE_KEY = "APP_SCRIPT_SEND_STATE_V1";
+
+function getUserSendState_() {
+  const props = PropertiesService.getUserProperties();
+  let state = {};
+  try {
+    state = JSON.parse(props.getProperty(APP_SCRIPT_SEND_STATE_KEY) || "{}");
+  } catch (_) {
+    state = {};
+  }
+  const now = Date.now();
+  if (!state.startedAt || now - Number(state.startedAt) >= 24 * 60 * 60 * 1000) {
+    state = { startedAt: now, sent: 0 };
+  }
+  state.sent = Math.max(0, Number(state.sent || 0));
+  return state;
+}
+
+function getUserSendRemaining_() {
+  const state = getUserSendState_();
+  return Math.max(0, APP_SCRIPT_SEND_LIMIT_24H - state.sent);
+}
+
+function registerUserSend_() {
+  const props = PropertiesService.getUserProperties();
+  const state = getUserSendState_();
+  state.sent += 1;
+  props.setProperty(APP_SCRIPT_SEND_STATE_KEY, JSON.stringify(state));
+  return state.sent;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // FONCTION PRINCIPALE — ENVOIS & RELANCES
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1454,7 +1490,12 @@ function traiterAusbildungCandidatures() {
       Logger.log("⛔ QUOTA GMAIL APPS SCRIPT ÉPUISÉ — aucun envoi tenté. Le prochain trigger réessaiera.");
       return;
     }
-    const limite = Math.min(CONFIG.BATCH_LIMIT, quotaRestant, 95);
+    const limiteCompte = getUserSendRemaining_();
+    if (limiteCompte <= 0) {
+      Logger.log("⛔ Plafond Apps Script du compte atteint : 95 envois sur 24 h.");
+      return;
+    }
+    const limite = Math.min(CONFIG.BATCH_LIMIT, quotaRestant, limiteCompte, APP_SCRIPT_SEND_LIMIT_24H);
     Logger.log("📨 Quota restant détecté : " + quotaRestant + " | limite de ce run : " + limite);
     const debutExecution = Date.now();
     let compteur = 0;
@@ -1572,6 +1613,8 @@ function traiterAusbildungCandidatures() {
             replyTo: Session.getEffectiveUser().getEmail() || CONFIG.EMAIL,
           });
 
+          registerUserSend_();
+
           const dateEnvoiNow = new Date();
           data[i][COL.STATUT] = "CANDIDATURE_ENVOYEE";
           data[i][COL.DATE_CANDIDATURE] = dateEnvoiNow;
@@ -1625,6 +1668,8 @@ function traiterAusbildungCandidatures() {
             name: CONFIG.NOM,
             replyTo: Session.getEffectiveUser().getEmail() || CONFIG.EMAIL,
           });
+
+          registerUserSend_();
 
           const dateRelanceNow = new Date();
           data[i][COL.STATUT] = "RELANCE_EFFECTUEE";
