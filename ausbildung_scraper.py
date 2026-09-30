@@ -559,15 +559,22 @@ def _bing_search(session, query, count=EXTERNAL_SEARCH_RESULTS):
     return out
 
 def _source_search_queries():
-    # One independent query per configured source, target role and target region.
-    # Do NOT collapse sources into one generic search: every domain in
-    # ALL_SOURCE_DOMAINS must be explicitly queried on every run.
-    return [
-        (rn, rol, dom, f"site:{dom} {ROLE_SEARCH_TERMS[rol]} Ausbildung {REGION_SEARCH_TERMS[rn]}")
-        for dom in ALL_SOURCE_DOMAINS
-        for rn in REGION_SEARCH_TERMS
-        for rol in ROLE_SEARCH_TERMS
-    ]
+    # Keep every configured source on every run, but batch the 12 target roles
+    # into a few search queries. The previous role x region x source matrix
+    # created ~1,500+ queries and made search-engine timeouts dominate the run.
+    role_items = list(ROLE_SEARCH_TERMS.items())
+    role_groups = [role_items[i:i + 4] for i in range(0, len(role_items), 4)]
+    queries = []
+    for dom in ALL_SOURCE_DOMAINS:
+        for rn, region in REGION_SEARCH_TERMS.items():
+            for group_no, group in enumerate(role_groups, 1):
+                roles = " OR ".join(f"({terms})" for _, terms in group)
+                role_label = f"roles-{group_no}"
+                queries.append(
+                    (rn, role_label, dom,
+                     f"site:{dom} ({roles}) Ausbildung ({region})")
+                )
+    return queries
 
 
 
@@ -636,10 +643,11 @@ def _iter_ba_links():
 def _iter_external_links():
     """Scrape every configured portal/sector source on every run.
 
-    Each source is queried independently for every target role and priority
-    region. Bing is the primary discovery engine and DuckDuckGo is a second
-    discovery path. The actual offer page is fetched later by
-    parse_external_detail().
+    Every configured domain is still searched in every priority region and
+    every target role is included, but roles are batched to avoid a huge
+    combinatorial query matrix. Bing is the primary discovery engine.
+    DuckDuckGo is used only as a bounded fallback when Bing returns no
+    matching links, so a DDG outage cannot consume the whole run.
     """
     session = make_session()
     seen = set()
@@ -647,8 +655,12 @@ def _iter_external_links():
     print(
         f"[*] MULTI-SOURCE IMPÉRATIF: {len(ALL_SOURCE_DOMAINS)} sources | "
         f"{len(REGION_SEARCH_TERMS)} régions | {len(ROLE_SEARCH_TERMS)} métiers | "
-        f"{len(queries)} requêtes source/métier/région x 2 moteurs"
+        f"{len(queries)} requêtes groupées (Bing + DDG fallback)"
     )
+
+    ddg_consecutive_failures = 0
+    DDG_FAILURE_LIMIT = 3
+    ddg_disabled = False
 
     for n, (rn, rol, dom, q) in enumerate(queries, 1):
         if scrape_time_exhausted():
@@ -656,18 +668,42 @@ def _iter_external_links():
 
         base_domain = dom.split("/")[0]
         added = 0
+        bing_ok = False
 
-        for engine_name in ("Bing", "DuckDuckGo"):
-            if scrape_time_exhausted():
-                return
+        try:
+            results = _bing_search(session, q)
+            bing_ok = True
+        except requests.RequestException as exc:
+            print(f"[!] Bing source search échouée ({dom} / {rn} / {rol}): {exc}")
+            results = []
 
-            try:
-                results = _bing_search(session, q) if engine_name == "Bing" else search_engine_duckduckgo(session, q)
-            except requests.RequestException as exc:
-                print(f"[!] {engine_name} source search échouée ({dom} / {rn} / {rol}): {exc}")
+        for url, title, snippet in results:
+            host = host_of(url)
+            if not host or not (host == base_domain or host.endswith("." + base_domain)):
                 continue
+            if url in seen:
+                continue
+            seen.add(url)
+            added += 1
+            yield url
 
-            for url, title, snippet in results:
+        # DDG is strictly a fallback. If it starts timing out repeatedly,
+        # open a circuit breaker for the rest of this run.
+        if not added and not ddg_disabled and not scrape_time_exhausted():
+            try:
+                ddg_results = search_engine_duckduckgo(session, q)
+                ddg_consecutive_failures = 0
+            except requests.RequestException as exc:
+                ddg_consecutive_failures += 1
+                print(
+                    f"[!] DuckDuckGo fallback échouée ({dom} / {rn} / {rol}) "
+                    f"[{ddg_consecutive_failures}/{DDG_FAILURE_LIMIT}]: {exc}"
+                )
+                ddg_results = []
+                if ddg_consecutive_failures >= DDG_FAILURE_LIMIT:
+                    ddg_disabled = True
+                    print("[!] DuckDuckGo circuit breaker: désactivé pour ce run.")
+            for url, title, snippet in ddg_results:
                 host = host_of(url)
                 if not host or not (host == base_domain or host.endswith("." + base_domain)):
                     continue
@@ -677,12 +713,11 @@ def _iter_external_links():
                 added += 1
                 yield url
 
-            time.sleep(random.uniform(*SEARCH_DELAY))
-
         if added:
             print(f"[+] SOURCE {n}/{len(queries)} | {dom} | {rn} | {rol} | +{added}")
         if n % 20 == 0:
             print(f"[*] Source search progress {n}/{len(queries)} | {len(seen)} unique links")
+        time.sleep(random.uniform(*SEARCH_DELAY))
 
 
 def iter_collected_links():
@@ -1505,7 +1540,14 @@ def search_engine_bing(session, query):
 
 
 def search_engine_duckduckgo(session, query):
-    r = session.get("https://html.duckduckgo.com/html/?q=" + quote_plus(query), timeout=DEEP_SEARCH_TIMEOUT)
+    # DDG is a fallback only. Keep its timeout short so an outage cannot
+    # stall the scraper for minutes per query.
+    timeout = min(DEEP_SEARCH_TIMEOUT, 6)
+    r = session.get(
+        "https://html.duckduckgo.com/html/?q=" + quote_plus(query),
+        timeout=timeout,
+        headers={"User-Agent": random.choice(USER_AGENTS), "Accept-Language": "de-DE,de;q=0.9"},
+    )
     r.raise_for_status()
     soup = BeautifulSoup(r.text, "html.parser")
     out = []
