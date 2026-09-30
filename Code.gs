@@ -1471,27 +1471,11 @@ function extrairePriorite(roleCible) {
  * Aucun envoi entre 20:00 et 05:00 GMT.
  */
 function getDispatchLimitGMT_() {
+  // Apps Script runs hourly. Each trigger may send a real batch instead of
+  // shrinking to 1–2 messages late in the day. The persistent 95/24h account
+  // limit below remains the hard safety cap.
   const hour = Number(Utilities.formatDate(new Date(), "GMT", "HH"));
-  const limitsByHour = {
-    5: 10,
-    6: 12,
-    7: 14,
-    8: 14,
-    9: 12,
-    10: 10,
-    11: 8,
-    12: 4,
-    13: 3,
-    14: 2,
-    15: 2,
-    16: 1,
-    17: 1,
-    18: 1,
-    19: 1
-  };
-  return Object.prototype.hasOwnProperty.call(limitsByHour, hour)
-    ? limitsByHour[hour]
-    : 0;
+  return (hour >= 5 && hour < 20) ? 10 : 0;
 }
 
 function traiterAusbildungCandidatures() {
@@ -1530,7 +1514,7 @@ function traiterAusbildungCandidatures() {
       Logger.log("⏸️ Aucun envoi autorisé à " + heureGMT + " GMT. Fenêtre d'envoi : 05:00–20:00 GMT.");
       return;
     }
-    const limite = Math.min(CONFIG.BATCH_LIMIT, limiteHoraireGMT, quotaRestant, limiteCompte, APP_SCRIPT_SEND_LIMIT_24H);
+    const limite = Math.min(CONFIG.BATCH_LIMIT, limiteHoraireGMT, quotaRestant, limiteCompte);
     Logger.log("📨 Quota restant : " + quotaRestant + " | plafond 24h : " + limiteCompte + " | limite horaire GMT : " + limiteHoraireGMT + " | limite de ce run : " + limite);
     const debutExecution = Date.now();
     let compteur = 0;
