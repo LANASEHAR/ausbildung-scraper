@@ -39,6 +39,7 @@ SEARCH_QUERIES = [
     # P2 — Logistique / Küche
     "Kauffrau für Spedition und Logistikdienstleistung Ausbildung", "Kaufmann für Spedition und Logistikdienstleistung Ausbildung", "Kauffrau/Kaufmann für Spedition und Logistikdienstleistung Ausbildung",
     "Kauffrau für Hotelmanagement Ausbildung", "Kaufmann für Hotelmanagement Ausbildung", "Kauffrau/Kaufmann für Hotelmanagement Ausbildung",
+    "Kauffrau für Tourismus und Freizeit Ausbildung", "Kaufmann für Tourismus und Freizeit Ausbildung", "Kauffrau/Kaufmann für Tourismus und Freizeit Ausbildung",
     "Koch Ausbildung", "Köchin Ausbildung", "Koch/Köchin Ausbildung",
     "Koch m/w/d Ausbildung", "Köchin m/w/d Ausbildung", "Ausbildung Koch Köchin",
     # P3 — Hotellerie / Bäckerei / Systemgastronomie
@@ -55,68 +56,69 @@ SEARCH_QUERIES = [
 ]
 
 ROLE_PRIORITY = [
-    # Ordre demandé : priorité métier > région > récence.
-    ("Fachverkäufer/in im Lebensmittelhandwerk", 10, (
-        "fachverkäufer im lebensmittelhandwerk","fachverkaeufer im lebensmittelhandwerk",
-        "fachverkäuferin im lebensmittelhandwerk","fachverkaeuferin im lebensmittelhandwerk",
-        "fachverkäufer im lebensmittelverkauf","fachverkäuferin im lebensmittelverkauf",
-        "fachverkäufer bäckerei","fachverkäuferin bäckerei","fachverkäufer baeckerei","fachverkäuferin baeckerei",
-        "fachverkäufer konditorei","fachverkäuferin konditorei","fachverkäufer fleischerei","fachverkäuferin fleischerei",
-        "fachverkäufer im lebensmittelhandwerk","lebensmittelhandwerk verkauf",
+    # Priorité métier pour le profil de Halima : hôtellerie / tourisme / gastronomie
+    # d'abord, puis commerce/logistique/kaufmännisch. La récence et la région
+    # restent des critères de tri séparés.
+    ("Hotelfachmann/-frau", 12, (
+        "hotelfachfrau","hotelfachmann","hotelfachfrau/-mann","hotelfachmann/-frau",
+        "hotelkauffrau","hotelkaufmann","rezeption","hotel"
     )),
-    ("Kauffrau im Einzelhandel", 9, (
-        "kauffrau im einzelhandel","kaufmann im einzelhandel","kauffrau einzelhandel","kaufmann einzelhandel",
-        "kaufmann/-frau im einzelhandel","kauffrau/kaufmann im einzelhandel",
-    )),
-    ("Kauffrau für Spedition und Logistikdienstleistung", 9, (
-        "kauffrau für spedition und logistikdienstleistung","kauffrau fur spedition und logistikdienstleistung",
-        "kaufmann für spedition und logistikdienstleistung","kaufmann fur spedition und logistikdienstleistung",
-        "kaufmann/-frau für spedition und logistikdienstleistung","kauffrau/kaufmann für spedition und logistikdienstleistung",
-        "spedition und logistikdienstleistung","speditionskauffrau","speditionskaufmann",
-    )),
-    ("Koch/Köchin", 8, (
-        "koch","köchin","koechin","koch/ köchin","koch/köchin","koch/-frau",
-        "ausbildung koch","ausbildung köchin",
-    )),
-    ("Kauffrau für Hotelmanagement", 7, (
+    ("Kauffrau für Hotelmanagement", 11, (
         "kauffrau für hotelmanagement","kauffrau fur hotelmanagement",
         "kaufmann für hotelmanagement","kaufmann fur hotelmanagement",
         "kaufmann/-frau für hotelmanagement","kauffrau/kaufmann für hotelmanagement",
-        "hotelmanagement kaufmännisch","hotelmanagement kaufmannisch",
+        "hotelmanagement"
     )),
-    ("Hotelfachmann/-frau", 6, (
-        "hotelfachfrau","hotelfachmann","hotelfachfrau/-mann","hotelfachmann/-frau",
-        "hotelkauffrau","hotelkaufmann","hotelmanagement",
-    )),
-    ("Bäcker/in", 6, (
-        "bäcker","baecker","bäckerin","baeckerin","bäcker/in","baecker/in",
-        "ausbildung bäcker","ausbildung baecker","bäckerei","baeckerei","konditorei",
-    )),
-    ("Fachfrau/Fachmann für Systemgastronomie", 5, (
+    ("Fachfrau/Fachmann für Systemgastronomie", 10, (
         "fachfrau für systemgastronomie","fachfrau fur systemgastronomie",
         "fachmann für systemgastronomie","fachmann fur systemgastronomie",
-        "fachfrau/fachmann für systemgastronomie","systemgastronomie",
+        "fachfrau/fachmann für systemgastronomie","systemgastronomie"
     )),
-    ("Kauffrau für Spedition und Logistikdienstleistung", 4, (
+    ("Koch/Köchin", 9, (
+        "koch","köchin","koechin","koch/köchin","koch/-frau",
+        "ausbildung koch","ausbildung köchin"
+    )),
+    ("Kauffrau im Einzelhandel", 8, (
+        "kauffrau im einzelhandel","kaufmann im einzelhandel","kauffrau einzelhandel","kaufmann einzelhandel",
+        "kaufmann/-frau im einzelhandel","kauffrau/kaufmann im einzelhandel"
+    )),
+    ("Kauffrau für Spedition und Logistikdienstleistung", 7, (
         "kauffrau für spedition und logistikdienstleistung","kauffrau fur spedition und logistikdienstleistung",
         "kaufmann für spedition und logistikdienstleistung","kaufmann fur spedition und logistikdienstleistung",
         "kaufmann/-frau für spedition und logistikdienstleistung","kauffrau/kaufmann für spedition und logistikdienstleistung",
-        "spedition und logistikdienstleistung","speditionskauffrau","speditionskaufmann",
+        "spedition und logistikdienstleistung","speditionskauffrau","speditionskaufmann"
     )),
-    ("Kauffrau im Groß- und Außenhandelsmanagement", 3, (
+    ("Kauffrau im Groß- und Außenhandelsmanagement", 6, (
         "kauffrau im groß- und außenhandelsmanagement","kauffrau im gross- und aussenhandelsmanagement",
         "kaufmann im groß- und außenhandelsmanagement","kaufmann im gross- und aussenhandelsmanagement",
         "kaufmann/-frau im groß- und außenhandelsmanagement","kauffrau/kaufmann im groß- und außenhandelsmanagement",
-        "groß- und außenhandelsmanagement","gross- und aussenhandelsmanagement",
+        "groß- und außenhandelsmanagement","gross- und aussenhandelsmanagement"
     )),
-    ("Industriekaufmann/-frau", 2, (
-        "industriekauffrau","industriekaufmann","industriekaufmann/-frau","industriekauffrau/-mann",
+    ("Industriekaufmann/-frau", 5, (
+        "industriekauffrau","industriekaufmann","industriekaufmann/-frau","industriekauffrau/-mann"
     )),
-    ("Kaufmann/-frau für Büromanagement", 1, (
+    ("Kaufmann/-frau für Büromanagement", 4, (
         "kauffrau für büromanagement","kauffrau fur bueromanagement","kaufmann für büromanagement","kaufmann fur bueromanagement",
-        "kaufmann/-frau für büromanagement","kauffrau/kaufmann für büromanagement","büromanagement","bueromanagement",
+        "kaufmann/-frau für büromanagement","kauffrau/kaufmann für büromanagement","büromanagement","bueromanagement"
+    )),
+    ("Fachverkäufer/in im Lebensmittelhandwerk", 3, (
+        "fachverkäufer im lebensmittelhandwerk","fachverkaeufer im lebensmittelhandwerk",
+        "fachverkäuferin im lebensmittelhandwerk","fachverkaeuferin im lebensmittelhandwerk",
+        "fachverkäufer bäckerei","fachverkäuferin bäckerei","fachverkäufer baeckerei","fachverkäuferin baeckerei",
+        "fachverkäufer konditorei","fachverkäuferin konditorei","fachverkäufer fleischerei","fachverkäuferin fleischerei",
+        "lebensmittelhandwerk verkauf"
+    )),
+    ("Bäcker/in", 2, (
+        "bäcker","baecker","bäckerin","baeckerin","bäcker/in","baecker/in",
+        "ausbildung bäcker","ausbildung baecker","bäckerei","baeckerei","konditorei"
+    )),
+    ("Kauffrau für Tourismus und Freizeit", 1, (
+        "kauffrau für tourismus und freizeit","kauffrau fur tourismus und freizeit",
+        "kaufmann für tourismus und freizeit","kaufmann fur tourismus und freizeit",
+        "kaufmann/-frau für tourismus und freizeit","tourismus und freizeit"
     )),
 ]
+
 REGION_PRIORITY = [
     ("Ostbayern & Bayerische Alpen", 10, (
         "ostbayern","niederbayern","oberpfalz","passau","regensburg","landshut","deggendorf","straubing","dingolfing",
@@ -190,6 +192,7 @@ ROLE_SEARCH_TERMS={
 "Koch/Köchin":'"Koch" OR "Köchin" OR "Koch/Köchin" OR "Koch/Köchin m/w/d"',
 "Hotelfachmann/-frau":'"Hotelfachfrau" OR "Hotelfachmann" OR "Hotelfachmann/-frau" OR "Hotelfachfrau/-mann" OR "Hotelkauffrau" OR "Hotelkaufmann"',
 "Kauffrau für Hotelmanagement":'"Kauffrau für Hotelmanagement" OR "Kaufmann für Hotelmanagement" OR "Kaufmann/-frau für Hotelmanagement"',
+"Kauffrau für Tourismus und Freizeit":'"Kauffrau für Tourismus und Freizeit" OR "Kaufmann für Tourismus und Freizeit" OR "Kaufmann/-frau für Tourismus und Freizeit"',
 "Bäcker/in":'"Bäcker" OR "Bäckerin" OR "Bäcker/in" OR "Bäckerei" OR "Konditorei"',
 "Fachfrau/Fachmann für Systemgastronomie":'"Fachfrau für Systemgastronomie" OR "Fachmann für Systemgastronomie" OR "Fachfrau/Fachmann für Systemgastronomie"',
 "Kauffrau für Spedition und Logistikdienstleistung":'"Kauffrau für Spedition und Logistikdienstleistung" OR "Kaufmann für Spedition und Logistikdienstleistung" OR "Kaufmann/-frau für Spedition und Logistikdienstleistung"',
