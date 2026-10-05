@@ -41,6 +41,7 @@ TITRES_AUSBILDUNG = {
     "handel": "Kauffrau im Groß- und Außenhandelsmanagement",
     "industrie": "Industriekaufmann/-frau",
     "buero": "Kaufmann/-frau für Büromanagement",
+    "tourismus": "Kauffrau für Tourismus und Freizeit",
   }
 
 MOTIVATIONS = {
@@ -145,6 +146,8 @@ def detecter_specialite(intitule: str, role_cible: str) -> str:
         return "spedition"
     if any(k in t for k in ["gross", "groß", "aussenhandel", "außenhandel", "grosshandel", "großhandel"]):
         return "handel"
+    if "tourismus und freizeit" in t or ("tourismus" in t and "freizeit" in t):
+        return "tourismus"
     if "industriekauf" in t:
         return "industrie"
     if any(k in t for k in ["büromanagement", "bueromanagement", "kaufmann/-frau für büromanagement", "kauffrau/kaufmann für büromanagement"]):
@@ -166,6 +169,25 @@ def get_signature_html() -> str:
     </td>
   </tr>
 </table>""".strip()
+
+
+def generer_email_depuis_apps_script(item: dict, type_envoi: str):
+    """Use Code.gs as the single source of truth for personalized emails."""
+    data = _webhook_json(
+        "POST",
+        json_payload={
+            "action": "generate_email",
+            "type": type_envoi,
+            "entreprise": item.get("entreprise", ""),
+            "intitule": item.get("intitule", ""),
+            "role_cible": item.get("role_cible", ""),
+            "lien": item.get("lien", ""),
+        },
+        label="generate_email",
+    )
+    if data.get("status") != "success" or not data.get("html_body"):
+        raise RuntimeError(f"generate_email Apps Script invalide: {data}")
+    return data["subject"], data["html_body"]
 
 
 def generer_email_candidature(specialite: str):
@@ -478,10 +500,10 @@ def main():
                 continue
 
             if type_envoi == "INITIAL":
-                sujet, html_body = generer_email_candidature(specialite)
+                sujet, html_body = generer_email_depuis_apps_script(item, "INITIAL")
                 nouveau_statut = "CANDIDATURE_ENVOYEE"
             else:
-                sujet, html_body = generer_email_relance(specialite)
+                sujet, html_body = generer_email_depuis_apps_script(item, "RELANCE")
                 nouveau_statut = "RELANCE_EFFECTUEE"
 
             reservation = None
