@@ -111,9 +111,10 @@ function extractFirstEmail(emailsRh) {
 
 function isValidEmail(email) {
   const str = normalizeEmail(email);
-  return /^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$/i.test(str) &&
-    !str.includes("non détecté") &&
-    !str.includes("postuler via lien");
+  if (!str || str.includes("non détecté") || str.includes("postuler via lien")) return false;
+  const match = str.match(/^([a-z0-9][a-z0-9._%+\-]{0,62}[a-z0-9])@([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i);
+  if (!match) return false;
+  return !match[1].includes("..");
 }
 
 /**
@@ -951,31 +952,43 @@ function doPost(e) {
  * Détermine la clé de spécialité à partir du contenu de l'intitulé et du rôle cible.
  * Retourne l'une des clés : "buero" | "ecommerce" | "handel" | "spedition" | "tourismus"
  */
-function detecterSpecialite(intitule,roleCible){
-  const t=((intitule||"")+" "+(roleCible||"")).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
-  if(t.includes("fachverkäufer")||t.includes("fachverkaeufer")||t.includes("lebensmittelhandwerk")||t.includes("fachverkäuferin")||t.includes("fachverkaeuferin")) return "fachverkaeufer_lebensmittel";
-  if(t.includes("einzelhandel")) return "einzelhandel";
-  if(t.includes("koch")||t.includes("köchin")||t.includes("koechin")) return "koch";
-  if(t.includes("kauffrau fur hotelmanagement")||t.includes("kaufmann fur hotelmanagement")||t.includes("kaufmann/-frau fur hotelmanagement")||t.includes("kauffrau/kaufmann fur hotelmanagement")) return "hotelmanagement";
-  if(t.includes("hotelfach")||t.includes("hotelkauffrau")||t.includes("hotelkaufmann")||t.includes("hotelmanagement")) return "hotelfachfrau";
-  if(t.includes("bäcker")||t.includes("baecker")||t.includes("bäckerei")||t.includes("baeckerei")||t.includes("konditorei")) return "baecker";
-  if(t.includes("systemgastronomie")) return "systemgastronomie";
-  if(t.includes("einzelhandel")) return "einzelhandel";
-  if(t.includes("spedition")||t.includes("logistikdienstleistung")||t.includes("speditionskauf")) return "spedition";
- if(
-  t.includes("gross") ||
-  t.includes("groß") ||
-  t.includes("aussenhandel") ||
-  t.includes("außenhandel") ||
-  t.includes("grosshandel") ||
-  t.includes("großhandel")
-) return "handel";
+function detecterSpecialite(intitule, roleCible) {
+  const t = ((intitule || "") + " " + (roleCible || ""))
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[|—–_:;,/\\]+/g, " ")
+    .replace(/[-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
-  if(t.includes("tourismus und freizeit")||t.includes("tourismus")&&t.includes("freizeit")) return "tourismus";
-  if(t.includes("industriekauf")) return "industrie";
-  if(t.includes("büromanagement")||t.includes("bueromanagement")||t.includes("kaufmann/-frau für büromanagement")||t.includes("kauffrau/kaufmann für büromanagement")) return "buero";
+  const has = (...terms) => terms.some(term => t.includes(term));
+
+  if (has("fachverkaufer im lebensmittelhandwerk","fachverkauferin im lebensmittelhandwerk",
+    "fachverkaufer lebensmittelhandwerk","fachverkaufer baeckerei","fachverkauferin baeckerei",
+    "fachverkaufer fleischerei","fachverkauferin fleischerei","fachverkaufer","fachverkauferin",
+    "lebensmittelhandwerk")) return "fachverkaeufer_lebensmittel";
+
+  if (has("kauffrau fur hotelmanagement","kaufmann fur hotelmanagement","hotelmanagement")) return "hotelmanagement";
+  if (has("hotelfachfrau","hotelfachmann","hotelfach","hotelkauffrau","hotelkaufmann")) return "hotelfachfrau";
+  if (has("systemgastronomie","fachfrau fachmann fur systemgastronomie","fachmann fur systemgastronomie")) return "systemgastronomie";
+  if (has("koch","koechin","koch koechin")) return "koch";
+  if (has("baecker","baeckerin","baeckerei","konditorei")) return "baecker";
+  if (has("kauffrau im einzelhandel","kaufmann im einzelhandel","kauffrau einzelhandel","kaufmann einzelhandel","einzelhandel")) return "einzelhandel";
+  if (has("kauffrau fur spedition und logistikdienstleistung","kaufmann fur spedition und logistikdienstleistung",
+    "spedition und logistikdienstleistung","speditionskauffrau","speditionskaufmann","spedition")) return "spedition";
+  if (has("kauffrau im gross und aussenhandelsmanagement","kaufmann im gross und aussenhandelsmanagement",
+    "gross und aussenhandelsmanagement","grossaussenhandelsmanagement","grosshandel","gross und aussenhandel",
+    "aussenhandel")) return "handel";
+  if (has("industriekauffrau","industriekaufmann","industriekauf")) return "industrie";
+  if (has("kauffrau fur bueromanagement","kaufmann fur bueromanagement","kauffrau im bueromanagement",
+    "kaufmann im bueromanagement","bueromanagement","burokauffrau","burokaufmann")) return "buero";
+  if (has("kauffrau fur tourismus und freizeit","kaufmann fur tourismus und freizeit","tourismus und freizeit") ||
+      (has("tourismus") && has("freizeit"))) return "tourismus";
+
   return "";
 }
+
 function getTitreAusbildung(
   specialite
 ) {
@@ -1276,10 +1289,13 @@ function escapeHtml_(value) {
  * au moment de la génération du mail.
  */
 function fetchOfferContext_(lien) {
-  if (!lien) return "";
+  const url = String(lien || "").trim();
+  if (!/^https?:\/\//i.test(url)) return "";
+
 
   try {
-    const response = UrlFetchApp.fetch(String(lien), {
+    const response = UrlFetchApp.fetch(url, {
+      timeoutSeconds: 10,
       muteHttpExceptions: true,
       followRedirects: true,
       headers: {
@@ -1666,6 +1682,7 @@ function traiterAusbildungCandidatures() {
 
     // Cache des CV pour éviter de relire Drive 30 fois.
     const cvCache = {};
+    const missingCvLogged = new Set();
     const pendingStatusUpdates = [];
     const pendingDateUpdates = [];
 
@@ -1745,6 +1762,7 @@ function traiterAusbildungCandidatures() {
         }
 
         const specialite = detecterSpecialite(intitule, roleCible);
+        if (!specialite) continue;
 
         if (!(specialite in cvCache)) {
           cvCache[specialite] = getCV(intitule, roleCible);
@@ -1753,7 +1771,10 @@ function traiterAusbildungCandidatures() {
         const cvFile = cvCache[specialite];
 
         if (!cvFile) {
-          Logger.log("⏭️ Ligne " + rowNum + " : CV manquant pour " + specialite);
+          if (!missingCvLogged.has(specialite)) {
+            Logger.log("⚠️ CV introuvable pour la spécialité : " + specialite);
+            missingCvLogged.add(specialite);
+          }
           continue;
         }
 
