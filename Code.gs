@@ -488,6 +488,37 @@ function doPost(e) {
     }
   }
 
+  // Génération du mail : le SMTP sender utilise exactement la même logique
+  // que l'envoi natif Apps Script, avec personnalisation depuis l'offre.
+  if (rawData && rawData.action === "generate_email") {
+    const type = String(rawData.type || "INITIAL").toUpperCase();
+    const entreprise = String(rawData.entreprise || "").trim();
+    const intitule = String(rawData.intitule || "").trim();
+    const roleCible = String(rawData.role_cible || "").trim();
+    const lien = String(rawData.lien || "").trim();
+
+    if (type === "RELANCE") {
+      const generated = genererEmailRelance(entreprise, intitule, roleCible);
+      return ContentService
+        .createTextOutput(JSON.stringify({
+          status: "success", action: "generate_email", type: type,
+          titre_poste: generated.titrePoste, subject: "Nachfassaktion – Bewerbung als " + generated.titrePoste + " – " + CONFIG.NOM,
+          html_body: generated.body
+        }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    const generated = genererEmailCandidature(entreprise, intitule, roleCible, lien);
+    return ContentService
+      .createTextOutput(JSON.stringify({
+        status: "success", action: "generate_email", type: "INITIAL",
+        titre_poste: generated.titrePoste,
+        subject: "Bewerbung um einen Ausbildungsplatz als " + generated.titrePoste + " – " + CONFIG.NOM,
+        html_body: generated.body
+      }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
   // rawData est déjà parsé avant d'entrer dans le lock.
   // Le mode get_cv retourne immédiatement sans toucher au Sheet.
   const lock = LockService.getScriptLock();
@@ -562,6 +593,9 @@ function doPost(e) {
           intitule: intitule,
           role_cible: roleCible,
           entreprise: String(row[COL.ENTREPRISE] || "").trim(),
+          lieu: String(row[COL.LIEU] || "").trim(),
+          lien: String(row[COL.LIEN] || "").trim(),
+          source: String(row[COL.SOURCE] || "").trim(),
           specialite: specialite
         });
         return true;
@@ -1497,30 +1531,22 @@ function genererEmailCandidature(entreprise, intitule, roleCible, lien) {
 function genererEmailRelance(entreprise, intitule, roleCible) {
   const specialite = detecterSpecialite(intitule, roleCible);
   const titrePoste = getTitreAusbildung(specialite);
+  const companyText = entreprise && entreprise !== "Unternehmen Deutschland"
+    ? " bei <strong>" + escapeHtml_(entreprise) + "</strong>"
+    : "";
 
-  const body = `
-<p>Sehr geehrte Damen und Herren,</p>
-
-<p>vor zwei Tagen habe ich Ihnen meine Bewerbung für einen Ausbildungsplatz als <strong>${titrePoste}</strong> geschickt. Ich wollte mich kurz erkundigen, ob meine Unterlagen gut bei Ihnen angekommen sind.</p>
-
-<p>Ich bin weiterhin sehr an der Ausbildung interessiert und sende Ihnen meinen Lebenslauf vorsichtshalber noch einmal im Anhang.</p>
-
-<p>Falls Sie noch weitere Unterlagen oder Informationen benötigen, lasse ich Ihnen diese gerne zukommen. Für ein kurzes Gespräch stehe ich Ihnen jederzeit gerne zur Verfügung.</p>
-
-<p>Vielen Dank für Ihre Zeit. Ich freue mich auf Ihre Rückmeldung.</p>
-
-<p>Mit freundlichen Grüßen</p>
-${getSignatureHTML()}
-`.trim();
+  const body = [
+    "<p>Sehr geehrte Damen und Herren,</p>",
+    "<p>ich möchte mich kurz nach meiner Bewerbung für die Ausbildung als <strong>" +
+      escapeHtml_(titrePoste) + "</strong>" + companyText + " erkundigen. Mein Interesse an der Ausbildung besteht weiterhin sehr.</p>",
+    "<p>Falls Sie noch Unterlagen oder Informationen von mir benötigen, lasse ich Ihnen diese gerne zukommen.</p>",
+    "<p>Vielen Dank für Ihre Zeit. Ich freue mich über Ihre Rückmeldung.</p>",
+    "<p>Mit freundlichen Grüßen</p>",
+    getSignatureHTML()
+  ].join("\n");
 
   return { titrePoste, body };
 }
-
-
-
-
-
-
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PLAFOND PERSISTANT PAR COMPTE GMAIL — 95 ENVOIS / 24 H
