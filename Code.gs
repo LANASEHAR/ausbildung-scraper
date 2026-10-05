@@ -38,7 +38,8 @@ const CONFIG={
     spedition:"Bewerbungsmappe_Kauffrau_fuer_Spedition_und_Logistikdienstleistung_Halima_Essaouaf.pdf",
     handel:"Bewerbungsmappe_Kauffrau_im_Einzelhandel_Halima_Essaouaf.pdf",
     industrie:"Bewerbungsmappe_Industriekauffrau_Halima_Essaouaf.pdf",
-    buero:"Bewerbungsmappe_Kauffrau_fuer_Bueromanagement_Halima_Essaouaf.pdf"
+    buero:"Bewerbungsmappe_Kauffrau_fuer_Bueromanagement_Halima_Essaouaf.pdf",
+    tourismus:"Bewerbung Kauffrau Tourismus Freizeit Halima Essaouaf.pdf"
   }
 };
 
