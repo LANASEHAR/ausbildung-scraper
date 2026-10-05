@@ -936,6 +936,7 @@ function detecterSpecialite(intitule,roleCible){
   t.includes("großhandel")
 ) return "handel";
 
+  if(t.includes("tourismus und freizeit")||t.includes("tourismus")&&t.includes("freizeit")) return "tourismus";
   if(t.includes("industriekauf")) return "industrie";
   if(t.includes("büromanagement")||t.includes("bueromanagement")||t.includes("kaufmann/-frau für büromanagement")||t.includes("kauffrau/kaufmann für büromanagement")) return "buero";
   return "";
@@ -980,7 +981,10 @@ function getTitreAusbildung(
       "Kauffrau im Groß- und Außenhandelsmanagement",
 
     industrie:
-      "Industriekauffrau"
+      "Industriekauffrau",
+
+    tourismus:
+      "Kauffrau für Tourismus und Freizeit"
 
   })[specialite] ||
   "Ausbildungsplatz";
@@ -1077,6 +1081,10 @@ function scoreCVFilename(filename, specialite) {
     buero: [
       ["bueromanagement", 125], ["kauffrau fuer bueromanagement", 125],
       ["kaufmann fuer bueromanagement", 125], ["buero", 45]
+    ],
+    tourismus: [
+      ["tourismus und freizeit", 130], ["kauffrau fuer tourismus und freizeit", 130],
+      ["kaufmann fuer tourismus und freizeit", 125], ["tourismus", 70]
     ]
   };
 
@@ -1426,6 +1434,8 @@ function getNaturalFitParagraph_(specialite, signals, entreprise) {
       "Durch meine bisherige kaufmännische Berufserfahrung kenne ich bereits Beschaffung, Auftragsabwicklung, Kundenbetreuung und strukturierte administrative Prozesse. Aktuell arbeite ich unter anderem mit Lieferanten, Beständen, Rechnungen, Excel und Sage.",
     buero:
       "Organisation, Kommunikation und strukturierte Bearbeitung gehören seit mehreren Jahren zu meinem Arbeitsalltag. Durch meine Erfahrung in Kundenbetreuung, Vertrieb und kaufmännischen Abläufen kann ich mich schnell in neue administrative Prozesse einarbeiten.",
+    tourismus:
+      "Die Reisebranche kenne ich bereits aus meiner Tätigkeit bei HBX Group / Hotelbeds. Dort arbeitete ich mit internationalen B2B-Geschäftspartnern aus dem Hotel- und Travel-Bereich und konnte meine Erfahrung in Kundenbetreuung, Kommunikation und kaufmännischen Abläufen vertiefen.",
     koch:
       "Ich bringe viel Erfahrung im Umgang mit Menschen, Service und strukturierten Arbeitsabläufen mit. Diese Stärken möchte ich nun in einem praktischen Ausbildungsberuf weiterentwickeln und professionelle Küchenabläufe von Grund auf erlernen.",
     baecker:
