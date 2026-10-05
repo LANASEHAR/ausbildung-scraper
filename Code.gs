@@ -1218,168 +1218,269 @@ function getSignatureHTML() {
  * Génère le corps HTML de l'email de candidature initiale.
  * Adapté par spécialité avec des formulations professionnelles en allemand.
  */
-function genererEmailCandidature(
-  entreprise,
-  intitule,
-  roleCible
-) {
+function escapeHtml_(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 
-  const specialite =
-    detecterSpecialite(
-      intitule,
-      roleCible
-    );
+/**
+ * Récupère quelques éléments réellement présents dans l'annonce.
+ * Aucun nouveau champ Sheet n'est nécessaire : le lien de l'offre est lu
+ * au moment de la génération du mail.
+ */
+function fetchOfferContext_(lien) {
+  if (!lien) return "";
 
+  try {
+    const response = UrlFetchApp.fetch(String(lien), {
+      muteHttpExceptions: true,
+      followRedirects: true,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; Ausbildung-Bewerbung/1.0)"
+      }
+    });
 
-  const titrePoste =
-    getTitreAusbildung(
-      specialite
-    );
+    const status = response.getResponseCode();
+    if (status < 200 || status >= 400) return "";
 
+    let html = response.getContentText();
+    if (!html) return "";
 
-  /*
-   * Si le nom de l'entreprise est connu,
-   * on le mentionne naturellement.
-   *
-   * Si l'entreprise est absente/inconnue,
-   * aucune mention artificielle n'est ajoutée.
-   */
+    // JSON-LD description is often the cleanest job description.
+    const jsonLdMatches = html.match(
+      /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
+    ) || [];
+
+    const jsonTexts = [];
+    for (const block of jsonLdMatches) {
+      const raw = block
+        .replace(/^<script[^>]*>/i, "")
+        .replace(/<\/script>$/i, "")
+        .trim();
+
+      try {
+        const parsed = JSON.parse(raw);
+        const items = Array.isArray(parsed) ? parsed : [parsed];
+        for (const item of items) {
+          if (!item || typeof item !== "object") continue;
+          if (item.description) jsonTexts.push(String(item.description));
+          if (item.title) jsonTexts.push(String(item.title));
+          if (item.name) jsonTexts.push(String(item.name));
+        }
+      } catch (_) {}
+    }
+
+    const meta = [];
+    const metaMatches = html.match(
+      /<meta[^>]+(?:name|property)=["'](?:description|og:description)["'][^>]+content=["']([^"']+)["'][^>]*>/gi
+    ) || [];
+    for (const tag of metaMatches) {
+      const m = tag.match(/content=["']([^"']+)["']/i);
+      if (m && m[1]) meta.push(m[1]);
+    }
+
+    const visible = html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+      .replace(/<svg[\s\S]*?<\/svg>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;/gi, "'")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    // Keep the context small so the generator stays fast and predictable.
+    return [jsonTexts.join(" "), meta.join(" "), visible]
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 14000);
+  } catch (error) {
+    Logger.log("[EMAIL_CONTEXT] Angebot konnte nicht gelesen werden: " + error);
+    return "";
+  }
+}
+
+function extractOfferSignals_(text, specialite) {
+  const t = String(text || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  const maps = {
+    hotelfachfrau: [
+      ["Reservierungen", /reservier|buchung|reservierung/],
+      ["Gästebetreuung", /gaeste?betreuung|gastgeber|gaestekontakt|kundenbetreuung/],
+      ["Check-in und Check-out", /check[\s-]?in|check[\s-]?out/],
+      ["Rechnungen und kaufmännische Abläufe", /rechnung|abrechnung|kasse|buchhaltung/],
+      ["Veranstaltungen", /veranstaltung|event|bankett/],
+      ["Beschwerdemanagement", /beschwerde|reklamation/]
+    ],
+    hotelmanagement: [
+      ["Reservierungen", /reservier|buchung/],
+      ["Gästebetreuung", /gaeste?betreuung|gastgeber|kundenbetreuung/],
+      ["kaufmännische Abläufe", /rechnung|abrechnung|controlling|buchhaltung|administr/],
+      ["Vertrieb und Kundenkontakt", /vertrieb|sales|kundenakquise|kundenbetreuung/],
+      ["Veranstaltungen", /veranstaltung|event|bankett/]
+    ],
+    systemgastronomie: [
+      ["Kundenservice", /kundenservice|gaestebetreuung|service/],
+      ["Organisation der Abläufe", /organisation|ablauf|koordination/],
+      ["Warenbestellung und Warenkontrolle", /warenbestell|bestellung|warenkontroll|lager/],
+      ["Kasse und Abrechnung", /kasse|abrechnung|rechnung/],
+      ["Teamarbeit", /team|mitarbeiter|zusammenarbeit/]
+    ],
+    einzelhandel: [
+      ["Kundenberatung", /kundenberatung|beratung|kundenbetreuung/],
+      ["Verkauf", /verkauf|verkaufen|sales/],
+      ["Warenpräsentation", /warenpraesentation|warenpraesentation|sortiment|praesentation/],
+      ["Warenbestellung und Bestand", /bestell|warenwirtschaft|bestand|inventur/],
+      ["Kasse", /kasse|kassieren/]
+    ],
+    spedition: [
+      ["Auftragsabwicklung", /auftragsabwicklung|auftraege|auftragsbearbeitung/],
+      ["Transport- und Tourenkoordination", /tour|transport|disposition|speditions/],
+      ["Kunden- und Lieferantenkontakt", /kunden|lieferanten|partner/],
+      ["Liefertermine", /liefertermin|lieferung|lieferzeiten/],
+      ["Dokumentation", /dokument|zoll|frachtschein/]
+    ],
+    handel: [
+      ["Beschaffung", /beschaffung|einkauf|bestellung/],
+      ["Lieferantenkontakt", /lieferanten|supplier/],
+      ["Auftragsabwicklung", /auftragsabwicklung|auftragsbearbeitung/],
+      ["Kundenbetreuung und Vertrieb", /kundenbetreuung|vertrieb|sales/],
+      ["Export und Import", /export|import|aussenhandel|grosshandel/]
+    ],
+    industrie: [
+      ["Beschaffung und Einkauf", /beschaffung|einkauf/],
+      ["Auftragsabwicklung", /auftragsabwicklung|auftragsbearbeitung/],
+      ["Rechnungen und kaufmännische Prozesse", /rechnung|abrechnung|buchhaltung/],
+      ["Kunden- und Lieferantenkontakt", /kunden|lieferanten/],
+      ["Vertrieb", /vertrieb|sales/]
+    ],
+    buero: [
+      ["Organisation", /organisation|koordination|administr/],
+      ["Kundenkommunikation", /kunden|telefon|kommunikation|empfang/],
+      ["Auftragsbearbeitung", /auftragsbearbeitung|auftragsabwicklung/],
+      ["Dokumentation", /dokument|schriftverkehr|datenpflege/],
+      ["Terminplanung", /termin|kalender/]
+    ],
+    koch: [
+      ["Vorbereitung und Küchenabläufe", /vorbereitung|mise en place|kueche|küche/],
+      ["Speisenzubereitung", /zubereitung|kochen|gerichte|speisen/],
+      ["Hygiene", /hygiene|lebensmittelhygiene/],
+      ["Teamarbeit", /team|küchenteam|kuechenteam/]
+    ],
+    baecker: [
+      ["Herstellung und Vorbereitung", /herstellung|teig|backen|produktion/],
+      ["Qualität und Hygiene", /qualitaet|qualität|hygiene/],
+      ["Kundenkontakt", /kunden|verkauf|beratung/]
+    ],
+    fachverkaeufer_lebensmittel: [
+      ["Kundenberatung", /kundenberatung|beratung/],
+      ["Verkauf", /verkauf|verkaufen/],
+      ["Warenpräsentation", /warenpraesentation|sortiment|praesentation/],
+      ["Lebensmittel und Qualität", /lebensmittel|frische|qualitaet|qualität/]
+    ]
+  };
+
+  const rules = maps[specialite] || maps.buero;
+  const found = [];
+  for (const [label, regex] of rules) {
+    if (regex.test(t) && !found.includes(label)) found.push(label);
+    if (found.length >= 3) break;
+  }
+  return found;
+}
+
+function getNaturalFitParagraph_(specialite, signals, entreprise) {
+  const signalText = signals.length
+    ? signals.slice(0, 3).join(", ")
+    : "";
+
+  const company = entreprise && entreprise !== "Unternehmen Deutschland"
+    ? " bei " + escapeHtml_(entreprise)
+    : "";
+
+  const base = {
+    hotelfachfrau:
+      "Die Hotellerie kenne ich bereits aus meiner Tätigkeit bei HBX Group / Hotelbeds. Dort betreute ich internationale B2B-Geschäftspartner aus dem Hotel- und Travel-Bereich und arbeitete täglich auf Arabisch, Französisch und Englisch. Dadurch bringe ich bereits Erfahrung mit Kunden, Geschäftspartnern und kaufmännischen Abläufen mit.",
+    hotelmanagement:
+      "Durch meine Tätigkeit bei HBX Group / Hotelbeds kenne ich die Hotel- und Travel-Branche bereits aus einem internationalen B2B-Umfeld. Kundenbetreuung, Kommunikation mit Geschäftspartnern und kaufmännische Abläufe gehören zu meiner bisherigen Erfahrung.",
+    systemgastronomie:
+      "Ich bringe über fünf Jahre Erfahrung in Kundenservice, Vertrieb und strukturierten Arbeitsabläufen mit. Besonders wichtig sind mir zuverlässiger Service, gute Kommunikation und ein professioneller Umgang mit Kunden und Kollegen.",
+    einzelhandel:
+      "Kundenberatung und Verkauf gehören seit mehreren Jahren zu meiner Berufserfahrung. Ich habe sowohl im B2B- als auch im B2C-Umfeld gearbeitet und bringe zusätzlich Erfahrung mit Auftragsabwicklung und kaufmännischen Aufgaben mit.",
+    spedition:
+      "Logistik und Koordination kenne ich bereits aus meiner Berufserfahrung. Bei Helpdesk ForYou koordinierte ich die Einsatzplanung von über 100 Fahrern und Mitarbeitenden. Heute arbeite ich außerdem mit Beschaffung, Logistik, Bestandsüberwachung und Auftragsabwicklung.",
+    handel:
+      "Ich bringe über fünf Jahre kaufmännische Erfahrung in Kundenbetreuung, Vertrieb und operativen Abläufen mit. In meiner aktuellen Tätigkeit arbeite ich unter anderem mit Beschaffung, Lieferanten, Bestandsüberwachung und Auftragsabwicklung sowie mit Excel und Sage.",
+    industrie:
+      "Durch meine bisherige kaufmännische Berufserfahrung kenne ich bereits Beschaffung, Auftragsabwicklung, Kundenbetreuung und strukturierte administrative Prozesse. Aktuell arbeite ich unter anderem mit Lieferanten, Beständen, Rechnungen, Excel und Sage.",
+    buero:
+      "Organisation, Kommunikation und strukturierte Bearbeitung gehören seit mehreren Jahren zu meinem Arbeitsalltag. Durch meine Erfahrung in Kundenbetreuung, Vertrieb und kaufmännischen Abläufen kann ich mich schnell in neue administrative Prozesse einarbeiten.",
+    koch:
+      "Ich bringe viel Erfahrung im Umgang mit Menschen, Service und strukturierten Arbeitsabläufen mit. Diese Stärken möchte ich nun in einem praktischen Ausbildungsberuf weiterentwickeln und professionelle Küchenabläufe von Grund auf erlernen.",
+    baecker:
+      "Sorgfalt, Zuverlässigkeit und Kundenorientierung gehören zu meiner bisherigen Berufserfahrung. Die Verbindung aus handwerklicher Arbeit, Qualität und direktem Kundenkontakt spricht mich besonders an.",
+    fachverkaeufer_lebensmittel:
+      "Kundenberatung und Verkauf gehören bereits zu meiner Berufserfahrung. Ich bringe einen sicheren Umgang mit Kunden, Kommunikationsstärke und Erfahrung im Vertrieb mit und möchte diese Stärken nun gezielt im Lebensmittelhandwerk einsetzen."
+  };
+
+  let paragraph = base[specialite] || base.buero;
+
+  if (signalText) {
+    paragraph += " " +
+      "Besonders angesprochen haben mich in Ihrer Ausschreibung " +
+      escapeHtml_(signalText) +
+      ". Genau diese Verbindung aus Kundenkontakt, Organisation und praktischem Arbeiten passt gut zu meiner bisherigen Erfahrung.";
+  }
+
+  return paragraph;
+}
+
+function genererEmailCandidature(entreprise, intitule, roleCible, lien) {
+  const specialite = detecterSpecialite(intitule, roleCible);
+  const titrePoste = getTitreAusbildung(specialite);
   const entrepriseConnue =
     entreprise &&
     entreprise.trim() &&
-    entreprise.trim() !==
-      "Unternehmen Deutschland";
+    entreprise.trim() !== "Unternehmen Deutschland";
 
+  const context = fetchOfferContext_(lien);
+  const signals = extractOfferSignals_(context, specialite);
 
-  const introduction =
-    entrepriseConnue
+  const intro = entrepriseConnue
+    ? "Ihre Ausschreibung für einen Ausbildungsplatz als <strong>" +
+      escapeHtml_(titrePoste) + "</strong> bei <strong>" +
+      escapeHtml_(entreprise.trim()) + "</strong> hat mich besonders angesprochen."
+    : "Ihre Ausschreibung für einen Ausbildungsplatz als <strong>" +
+      escapeHtml_(titrePoste) + "</strong> hat mich besonders angesprochen.";
 
-      ?
+  const fit = getNaturalFitParagraph_(specialite, signals, entreprise);
 
-      `mit großem Interesse bewerbe ich mich um einen Ausbildungsplatz als <strong>${titrePoste}</strong>.`
+  const relocation =
+    "Da ich mich derzeit aus Marokko bewerbe, organisiere ich die notwendigen Schritte für Visum, Einreise und Unterlagen selbstständig.";
 
-      :
+  const body = [
+    "<p>Sehr geehrte Damen und Herren,</p>",
+    "<p>" + intro + "</p>",
+    "<p>" + fit + "</p>",
+    "<p>" + relocation + "</p>",
+    "<p>Deutsch B1 habe ich abgeschlossen und bereite mich aktuell auf B2 vor. Meine vollständigen Bewerbungsunterlagen finden Sie im Anhang.</p>",
+    "<p>Gerne stelle ich mich Ihnen auch in einem kurzen Videogespräch persönlich vor.</p>",
+    "<p>Mit freundlichen Grüßen</p>",
+    getSignatureHTML()
+  ].join("\n");
 
-      `mit großem Interesse bewerbe ich mich um einen Ausbildungsplatz als <strong>${titrePoste}</strong>.`;
-
-
-  /*
-   * EMAILS COURTS ET SPÉCIFIQUES À CHAQUE AUSBILDUNG
-   *
-   * Chaque version utilise les éléments réellement
-   * pertinents du CV correspondant.
-   */
-  const motivation = ({
-
-    /* =====================================================
-       HOTELFACHFRAU
-       ===================================================== */
-
-    fachverkaeufer_lebensmittel:
-      `Die Beratung und der Verkauf von Lebensmitteln verbinden Kundenkontakt, Service und sorgfältiges Arbeiten. Ich bringe über fünf Jahre Erfahrung in Kundenbetreuung und Vertrieb mit und möchte diese Stärke nun gezielt im Lebensmittelhandwerk einsetzen und mit einer anerkannten Ausbildung in Deutschland verbinden.`,
-
-    koch:
-      `Die Arbeit mit Menschen, Organisation und Service gehört bereits zu meiner Berufserfahrung. Ich möchte diese Erfahrung nun in der Küche weiterentwickeln, professionelle Abläufe erlernen und eine anerkannte Ausbildung als Koch/Köchin in Deutschland absolvieren.`,
-
-    hotelfachfrau:
-
-      `Die Hotellerie ist mir bereits aus meiner beruflichen Erfahrung vertraut. Bei HBX Group / Hotelbeds betreute ich ein internationales B2B-Kundenportfolio im Bereich Hotellerie und Travel im Nahen Osten und arbeitete täglich mit Geschäftspartnern auf Arabisch, Französisch und Englisch. Insgesamt bringe ich über fünf Jahre Erfahrung in Kundenbetreuung, Vertrieb und kaufmännischen Abläufen mit. Diese Erfahrung möchte ich nun mit einer Ausbildung in Deutschland und einem anerkannten IHK-Abschluss weiterentwickeln.`,
-
-
-    /* =====================================================
-       SYSTEMGASTRONOMIE
-       ===================================================== */
-
-    systemgastronomie:
-
-      `Auch wenn mein bisheriger beruflicher Weg nicht direkt aus der Gastronomie kommt, bringe ich über fünf Jahre Erfahrung im Kundenservice, Vertrieb und in strukturierten Arbeitsabläufen mit. Als Top-Verkäuferin konnte ich bereits meine Stärke in Kundenkommunikation und Beratung unter Beweis stellen. Diese Erfahrung möchte ich nun in die Systemgastronomie einbringen und die professionellen Abläufe in Deutschland von Grund auf erlernen.`,
-
-
-    /* =====================================================
-       EINZELHANDEL
-       ===================================================== */
-
-    einzelhandel:
-
-      `Kundenberatung und Verkauf begleiten mich seit mehreren Jahren. In über fünf Jahren Berufserfahrung habe ich im B2B- und B2C-Vertrieb sowie im Kundenservice gearbeitet und wurde bei Umanis Intermediation aufgrund meiner Beratungsqualität und Abschlussstärke als Top-Verkäuferin ausgezeichnet. Heute gehören außerdem Bestandsüberwachung, Auftragsabwicklung und kaufmännische Aufgaben zu meinem Arbeitsalltag. Diese Erfahrung möchte ich nun gezielt mit einer deutschen Ausbildung und einem anerkannten IHK-Abschluss verbinden.`,
-
-
-    /* =====================================================
-       SPEDITION / LOGISTIK
-       ===================================================== */
-
-    spedition:
-
-      `Logistik und Koordination sind mir bereits aus meiner Berufserfahrung vertraut. Bei Helpdesk ForYou koordinierte ich die Einsatzplanung von über 100 Fahrern und Mitarbeitenden und verfolgte Touren, Termine und Wartungen. Heute arbeite ich bei Atmlo Chem / EasyChemicalStock mit Beschaffung, Logistik, Bestandsüberwachung, Auftragsabwicklung und Lieferanten. Insgesamt bringe ich über fünf Jahre kaufmännische Berufserfahrung mit, die ich nun gezielt durch eine Ausbildung und einen anerkannten IHK-Abschluss erweitern möchte.`,
-
-
-    /* =====================================================
-       GROSS- UND AUSSENHANDEL
-       ===================================================== */
-
-    handel:
-
-      `Ich bringe über fünf Jahre Berufserfahrung in kaufmännischen Bereichen, Kundenbetreuung und Vertrieb mit. In meiner aktuellen Tätigkeit arbeite ich unter anderem mit Beschaffung, Lieferanten, Bestandsüberwachung und Auftragsabwicklung sowie mit Excel und Sage. Zuvor betreute ich bei HBX Group / Hotelbeds internationale B2B-Geschäftspartner. Diese Erfahrung möchte ich nun mit einer fundierten Ausbildung und einem anerkannten IHK-Abschluss in Deutschland verbinden.`,
-
-
-    /* =====================================================
-       INDUSTRIE
-       ===================================================== */
-
-    industrie:
-
-      `Durch über fünf Jahre Berufserfahrung bringe ich bereits praktische Kenntnisse in kaufmännischer Organisation, Beschaffung, Auftragsabwicklung und Kundenbetreuung mit. Aktuell arbeite ich mit Lieferanten, Beständen, Rechnungen, Excel und dem ERP-System Sage. Ich möchte diese Praxiserfahrung nun mit den kaufmännischen Prozessen eines deutschen Unternehmens verbinden und dabei einen anerkannten IHK-Abschluss erwerben.`,
-
-    baecker:
-      `Sorgfalt, Kundenorientierung und zuverlässiges Arbeiten gehören zu meinen bisherigen beruflichen Erfahrungen. Die Verbindung von handwerklicher Herstellung und direktem Kundenkontakt im Bäckerhandwerk spricht mich besonders an. Diese Stärken möchte ich durch eine fundierte Ausbildung in Deutschland weiterentwickeln.`,
-
-    buero:
-      `Ich bringe über fünf Jahre Erfahrung in Kundenbetreuung, Vertrieb und kaufmännischen Abläufen mit. Organisation, Kommunikation und strukturierte Bearbeitung gehören zu meinem Arbeitsalltag. Diese Erfahrung möchte ich nun mit einer anerkannten Ausbildung für Büromanagement in Deutschland vertiefen.`
-
-  })[specialite] ||
-
-    `Ich bringe über fünf Jahre Berufserfahrung in kaufmännischen Bereichen, Kundenbetreuung und strukturierten Arbeitsprozessen mit. Diese Erfahrung möchte ich nun gezielt durch eine fundierte Ausbildung in Deutschland erweitern.`;
-
-
-  /* =======================================================
-     CORPS DU MAIL
-     ======================================================= */
-
-  const body = `
-
-<p>Sehr geehrte Damen und Herren,</p>
-
-<p>
-${introduction}
-</p>
-
-<p>
-${motivation}
-</p>
-
-<p>
-Deutsch B1 habe ich abgeschlossen und bereite mich aktuell auf B2 vor.
-Meine vollständigen Bewerbungsunterlagen finden Sie im Anhang.
-</p>
-
-<p>
-Über die Gelegenheit per Videogespräch vorzustellen,
-würde ich mich sehr freuen.
-</p>
-
-<p>
-Mit freundlichen Grüßen
-</p>
-
-${getSignatureHTML()}
-
-`.trim();
-
-
-  return {
-    titrePoste,
-    body
-  };
+  return { titrePoste, body };
 }
 
 function genererEmailRelance(entreprise, intitule, roleCible) {
@@ -1620,7 +1721,7 @@ function traiterAusbildungCandidatures() {
         }
 
         const { titrePoste, body } = genererEmailCandidature(
-          entreprise, intitule, roleCible
+          entreprise, intitule, roleCible, String(row[COL.LIEN] || "").trim()
         );
         const sujet = "Bewerbung um einen Ausbildungsplatz als " + titrePoste + " – " + CONFIG.NOM;
 
@@ -1657,7 +1758,7 @@ function traiterAusbildungCandidatures() {
         continue;
       }
 
-      // ── RELANCE 48H ─────────────────────────────────────────────────────
+      // ── RELANCE APRÈS 7 JOURS ─────────────────────────────────────────────
       if (statut === "CANDIDATURE_ENVOYEE" && dateEnvoi) {
         const diffHeures = (now - dateEnvoi) / (1000 * 60 * 60);
 
