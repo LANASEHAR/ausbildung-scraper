@@ -1687,10 +1687,23 @@ function traiterAusbildungCandidatures() {
     const pendingDateUpdates = [];
 
     const rowIndexes = [];
+
+    // Build the send queue without historical duplicates.
+    // A new offer whose contact email has already received an initial
+    // application is excluded here, before the main loop. This prevents
+    // thousands of useless "already sent" checks/logs on large sheets.
     for (let i = 1; i < data.length; i++) {
       const status = String(data[i][COL.STATUT] || "").trim();
-      if (status === "NOUVEAU") rowIndexes.push(i);
+      if (status !== "NOUVEAU") continue;
+
+      const email = extractFirstEmail(data[i][COL.EMAILS_RH] || "");
+      if (!email || !isValidEmail(email)) continue;
+      if (sentEmails.has(email)) continue;
+
+      rowIndexes.push(i);
     }
+
+    // Relances remain eligible and are handled separately by the date check.
     for (let i = 1; i < data.length; i++) {
       const status = String(data[i][COL.STATUT] || "").trim();
       if (status === "CANDIDATURE_ENVOYEE") rowIndexes.push(i);
