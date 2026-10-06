@@ -277,6 +277,93 @@ def find_remote_jobs(company):
     return results[:5]
 
 
+def discover_remote_jobs_global():
+    session = requests.Session()
+    session.headers.update({"User-Agent": USER_AGENT, "Accept-Language": "en-US,en;q=0.9"})
+    found = []
+    seen = set()
+    queries = list(REMOTE_QUERIES)
+    for term in ROLE_TERMS:
+        queries.extend([
+            f'"{term}" remote Morocco travel',
+            f'"{term}" remote Morocco hospitality',
+            f'"{term}" "Morocco" "remote" travel',
+            f'"{term}" "Morocco" "remote" hospitality',
+        ])
+    for query in queries:
+        for domain in ["linkedin.com/jobs/view", "greenhouse.io", "lever.co", "workable.com", "smartrecruiters.com", "ashbyhq.com", "indeed.com"]:
+            q = f'site:{domain} {query}'
+            try:
+                rows = search_bing(session, q, 10)
+            except requests.RequestException:
+                rows = []
+            for url, title, snippet in rows:
+                low = (title + " " + snippet + " " + url).lower()
+                if not any(x in low for x in ["remote","morocco","maroc","mena","emea","worldwide","anywhere"]):
+                    continue
+                if not any(term in low for term in ROLE_TERMS):
+                    continue
+                key = url.split("#",1)[0]
+                if key in seen:
+                    continue
+                seen.add(key)
+                found.append({
+                    "poste": clean(re.sub(r"\\s*[-|–—]\\s*(LinkedIn|Indeed|Glassdoor).*$", "", title, flags=re.I)),
+                    "lien_offre": key,
+                    "job_snippet": snippet,
+                    "source": "Remote job index",
+                    "remote_evidence": clean(snippet),
+                })
+                if len(found) >= 300:
+                    return found
+            time.sleep(random.uniform(.1,.3))
+    return found
+
+
+def infer_company_from_job(job):
+    title = job.get("poste","")
+    snippet = job.get("job_snippet","")
+    for pattern in [
+        r"\\bat\\s+([A-Z][A-Za-z0-9&. -]{2,80})$",
+        r"\\bchez\\s+([A-Z][A-Za-z0-9&. -]{2,80})$",
+        r"^(.+?)\\s+[-|–—]\\s+([A-Z][A-Za-z0-9&. ]{2,80})$",
+        r"^(.+?)\\s+at\\s+([A-Z][A-Za-z0-9&. ]{2,80})$",
+    ]:
+        m = re.search(pattern, title, flags=re.I)
+        if m:
+            return clean(m.group(1 if len(m.groups()) == 1 else len(m.groups())))
+    m = re.search(r"(?:at|chez)\\s+([A-Z][A-Za-z0-9&. -]{2,80})", snippet)
+    if m:
+        return clean(m.group(1))
+    return ""
+
+
+def enrich_global_job(job):
+    session = requests.Session()
+    session.headers.update({"User-Agent": USER_AGENT, "Accept-Language": "en-US,en;q=0.9"})
+    company = infer_company_from_job(job)
+    url = job.get("lien_offre","")
+    site = ""
+    email = ""
+    try:
+        r = session.get(url, timeout=TIMEOUT, allow_redirects=True)
+        if r.ok:
+            soup = BeautifulSoup(r.text, "html.parser")
+            text = clean(soup.get_text(" ", strip=True))
+            title = clean(soup.title.get_text(" ", strip=True)) if soup.title else ""
+            meta = clean((soup.find("meta", attrs={"property":"og:title"}) or {}).get("content","") if soup.find("meta", attrs={"property":"og:title"}) else "")
+            combined = " ".join([title, meta, text[:12000]])
+            if not company:
+                company = infer_company_from_job({"poste":title, "job_snippet":combined})
+            email = extract_email(r.text)
+            h = host(url)
+            if h:
+                site = "https://" + h + "/"
+    except requests.RequestException:
+        pass
+    return company, site, email
+
+
 def fit_score(company, job=None):
     text = clean(" ".join(str((job or {}).get(k, "")) for k in ["poste","job_snippet"]) + " " + company).lower()
     score = 0
@@ -352,6 +439,8 @@ def main():
     print("[*] LinkedIn seed:", SOURCE_LINKEDIN)
     companies = discover_companies()
     print(f"[*] Entreprises uniques découvertes: {len(companies)}")
+    global_jobs = discover_remote_jobs_global()
+    print(f"[*] Offres remote Maroc/EMEA découvertes directement: {len(global_jobs)}")
 
     records = []
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
@@ -379,6 +468,22 @@ def main():
 
             if completed % 20 == 0:
                 print(f"[*] Enrichissement: {completed}/{len(futures)}")
+
+    # Offres trouvées directement, même si l'entreprise n'était pas dans la liste LinkedIn.
+    for job in global_jobs:
+        company = infer_company_from_job(job)
+        if not company:
+            continue
+        site, email = "", ""
+        try:
+            company2, site2, email2 = enrich_global_job(job)
+            company = company2 or company
+            site, email = site2, email2
+        except Exception as exc:
+            print("[!] job enrichment error", job.get("lien_offre",""), exc)
+        if company:
+            c0 = {"company": company, "linkedin_url": "", "industry_id": "", "industry": "Hospitality / Travel", "discovery_region": "Remote / Morocco"}
+            records.append(make_record(c0, site, email, job))
 
     for c in companies:
         site = c.get("site","")
