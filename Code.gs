@@ -1757,7 +1757,6 @@ function traiterAusbildungCandidatures() {
       // ── CANDIDATURE INITIALE ────────────────────────────────────────────
       if (statut === "NOUVEAU") {
         if (sentEmails.has(emailCible)) {
-          Logger.log("⏭️ Candidature initiale déjà envoyée historiquement : " + emailCible);
           continue;
         }
 
