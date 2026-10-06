@@ -43,6 +43,20 @@ const CONFIG={
   }
 };
 
+const REMOTE_CONFIG = {
+  SHEET_NAME: "Remote Travel Hospitality",
+  NOM: "Halima Essaouaf",
+  EMAIL: "essaouafhalima@gmail.com",
+  TEL: "+212619968131",
+  LINKEDIN: "linkedin.com/in/halima-essaouaf-1b4b81202",
+  LOCATION: "Casablanca, Morocco",
+  LANGUAGES: "Arabic (Native), French (C1), English (C1), German (B2 in progress), Spanish (A2 in progress)",
+  PROFILE: "B2B Customer Success, Account Management, Sales, Travel-Tech, Operations, Customer Support, Commercial Administration"
+};
+
+const REMOTE_HEADERS = ["date_detection","statut","poste","entreprise","lieu","type_remote","email","site_entreprise","source","lien_offre","linkedin_url","id","fit_score","fit_reason","type_poste","salaire","langues_requises","acces_depuis_maroc","contact_status","message_envoye"];
+
+
 // Colonnes du Google Sheet (0-indexées)
 
 const COL = {
@@ -428,6 +442,81 @@ function sortOffers(sheet) {
     ]);
 }
 
+
+function getRemoteSheet_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(REMOTE_CONFIG.SHEET_NAME);
+  if (!sheet) sheet = ss.insertSheet(REMOTE_CONFIG.SHEET_NAME);
+  if (sheet.getMaxColumns() < REMOTE_HEADERS.length) sheet.insertColumnsAfter(sheet.getMaxColumns(), REMOTE_HEADERS.length - sheet.getMaxColumns());
+  const range = sheet.getRange(1, 1, 1, REMOTE_HEADERS.length);
+  const current = range.getValues()[0];
+  let changed = false;
+  for (let i = 0; i < REMOTE_HEADERS.length; i++) if (!current[i]) { current[i] = REMOTE_HEADERS[i]; changed = true; }
+  if (changed) range.setValues([current]);
+  return sheet;
+}
+
+function remoteFitScore_(job) {
+  const t = String([job.poste,job.role_cible,job.intitule,job.entreprise,job.fit_reason].join(" ")).toLowerCase();
+  let score = 0;
+  const rules = [
+    [/account manager|account management|customer success|customer support|customer experience/,24],
+    [/travel|travel-tech|hospitality|hotel|tourism|ota|booking|travel agent|tour operator|dmc/,22],
+    [/b2b|business development|sales|commercial|partnership|partner success|supplier/,18],
+    [/operations|reservation|reservations|back office|onboarding|activation/,14],
+    [/french|français|francais/,8],[/arabic|arabe/,8],[/english|anglais/,6],[/german|allemand|deutsch/,4],
+    [/remote|work from anywhere|distributed|home-based|remote first|morocco|maroc|mena|emea/,12]
+  ];
+  rules.forEach(function(r){ if(r[0].test(t)) score += r[1]; });
+  return Math.min(100,score);
+}
+
+function generateRemoteEmail_(job) {
+  const company=String(job.entreprise||"your company").trim();
+  const title=String(job.poste||job.intitule||"a remote position").trim();
+  const hasJob=!!String(job.lien_offre||job.lien||"").trim() || !!job.poste;
+  const subject=hasJob ? "Application – "+title+" – Halima Essaouaf | Travel & B2B Customer Success" : "Spontaneous application – Travel & Hospitality – Halima Essaouaf";
+  const opening=hasJob ? "I am reaching out regarding the "+title+" opportunity at "+company+"." : "I am reaching out to explore remote opportunities at "+company+" in customer success, account management, sales or operations.";
+  const body=[
+    "Dear Hiring Team,","",opening,"",
+    "My background combines international travel-tech account management, B2B customer success, sales and operations. At HBX Group (Hotelbeds / Bedsonline), I managed a portfolio of 600+ B2B travel-agency accounts across the Middle East, handling onboarding, activation, relationship management, retention, upselling and multilingual client communication in Arabic, French and English.",
+    "",
+    "I also bring experience in B2B FinTech customer support, commercial administration, supplier communication, logistics coordination, e-commerce and CRM-based follow-up. This allows me to contribute across customer-facing, commercial and operational responsibilities.",
+    "",
+    "I am based in Casablanca, Morocco and am specifically looking for a remote role that can be performed from Morocco. I work professionally in Arabic, French and English, with German at B2 level in progress.",
+    "",
+    "I would be glad to discuss how my travel-tech experience and multilingual B2B background could support your team.","",
+    "Kind regards,","Halima Essaouaf","Casablanca, Morocco","+212 619 968 131","essaouafhalima@gmail.com","linkedin.com/in/halima-essaouaf-1b4b81202"
+  ].join("\n");
+  return {subject:subject,body:body};
+}
+
+function remoteInsert_(jobs) {
+  const sheet=getRemoteSheet_();
+  const data=sheet.getDataRange().getValues();
+  const existingIds=new Set();
+  for(let i=1;i<data.length;i++){const id=String(data[i][11]||"").trim();if(id)existingIds.add(id);}
+  const rows=[];
+  for(const job of (Array.isArray(jobs)?jobs:[])){
+    const company=String(job.entreprise||"").trim();
+    const email=extractFirstEmail(job.email||job.emails_rh||"");
+    const jobUrl=String(job.lien_offre||job.lien||"").trim();
+    const linkedin=String(job.linkedin_url||"").trim();
+    const key=String(job.id||"").trim() || Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, String(company).toLowerCase()+"|"+jobUrl+"|"+linkedin)).replace(/=+$/,"");
+    if(!company || (!email && !jobUrl) || existingIds.has(key)) continue;
+    rows.push([
+      job.date_detection||new Date().toISOString(),job.statut||"NOUVEAU",job.poste||job.intitule||"",company,
+      job.lieu||"Remote",job.type_remote||"Remote",email,job.site_entreprise||"",job.source||"LinkedIn / Web",
+      jobUrl,linkedin,key,Number(job.fit_score||remoteFitScore_(job)),job.fit_reason||"Travel-tech + B2B + multilingual profile",
+      job.type_poste||"",job.salaire||"",job.langues_requises||"",job.acces_depuis_maroc||(jobUrl?"À vérifier dans l'offre":""),
+      email?"EMAIL_VERIFIE":"OFFRE_A_POSTULER",""
+    ]);
+    existingIds.add(key);
+  }
+  if(rows.length) sheet.getRange(sheet.getLastRow()+1,1,rows.length,REMOTE_HEADERS.length).setValues(rows);
+  return {status:"success",action:"remote_insert",added:rows.length};
+}
+
 function doPost(e) {
   // ── MODE GET_CV : le sender SMTP demande le PDF depuis Drive ─────────────
   // Le sender utilise POST pour éviter les 404 intermittents observés sur GET.
@@ -520,6 +609,11 @@ function doPost(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 
+  if (rawData && rawData.action === "remote_generate_email") {
+    const generated = generateRemoteEmail_(rawData);
+    return ContentService.createTextOutput(JSON.stringify({status:"success",action:"remote_generate_email",subject:generated.subject,body:generated.body})).setMimeType(ContentService.MimeType.JSON);
+  }
+
   // rawData est déjà parsé avant d'entrer dans le lock.
   // Le mode get_cv retourne immédiatement sans toucher au Sheet.
   const lock = LockService.getScriptLock();
@@ -542,6 +636,10 @@ function doPost(e) {
       return ContentService
         .createTextOutput(JSON.stringify(result))
         .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (rawData && rawData.action === "remote_insert") {
+      return ContentService.createTextOutput(JSON.stringify(remoteInsert_(rawData.jobs||[]))).setMimeType(ContentService.MimeType.JSON);
     }
 
     const sheet = getSheet();
