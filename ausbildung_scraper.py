@@ -1175,7 +1175,7 @@ def ensure_employer_name(job, url="", soup=None, text="", details=None):
 
 def parse_external_detail(link):
     session=make_session(link); host=host_of(link)
-    base={"date_detection":time.strftime("%Y-%m-%d %H:%M"),"date_offre":"","statut":"NOUVEAU","role_cible":"","intitule":"Ausbildung","entreprise":"Entreprise non indiquée","lieu":"Deutschland","emails_rh":"","site_entreprise":"","source":host,"lien":link,"id":"src_"+hashlib.sha256(link.encode()).hexdigest()[:20],"description":""}
+    base={"date_detection":time.strftime("%Y-%m-%d %H:%M"),"date_offre":"","statut":"NOUVEAU","role_cible":"","intitule":"Ausbildung","entreprise":"","lieu":"Deutschland","emails_rh":"","site_entreprise":"","source":host,"lien":link,"id":"src_"+hashlib.sha256(link.encode()).hexdigest()[:20],"description":""}
     try:
         r=session.get(link,timeout=DETAIL_TIMEOUT,allow_redirects=True); r.raise_for_status()
         soup=BeautifulSoup(r.text,"html.parser"); text=clean(soup.get_text(" ",strip=True)); h1=soup.find("h1")
