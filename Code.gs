@@ -1649,6 +1649,7 @@ function getNaturalFitParagraph_(specialite, signals, entreprise) {
 }
 
 function genererEmailCandidature(entreprise, intitule, roleCible, lien) {
+  entreprise = normaliserEntrepriseEmail_(entreprise);
   const specialite = detecterSpecialite(intitule, roleCible);
   const titrePoste = getTitreAusbildung(specialite);
   const entrepriseConnue =
@@ -1686,6 +1687,7 @@ function genererEmailCandidature(entreprise, intitule, roleCible, lien) {
 }
 
 function genererEmailRelance(entreprise, intitule, roleCible) {
+  entreprise = normaliserEntrepriseEmail_(entreprise);
   const specialite = detecterSpecialite(intitule, roleCible);
   const titrePoste = getTitreAusbildung(specialite);
   const companyText = entreprise && entreprise !== "Unternehmen Deutschland"
