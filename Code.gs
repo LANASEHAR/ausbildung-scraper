@@ -30,16 +30,16 @@ const CONFIG={
   CV_MAPPING:{
     fachverkaeufer_lebensmittel:"Bewerbungsmappe_Fachverkaeufer_Lebensmittelhandwerk_Halima_Essaouaf.pdf",
     einzelhandel:"Bewerbungsmappe_Kauffrau_im_Einzelhandel_Halima_Essaouaf.pdf",
-    koch:"Bewerbungsmappe_Koch_Koechin_Halima_Essaouaf.pdf",
+    koch:"Bewerbungsmappe_Hotelfachfrau_Halima_Essaouaf.pdf",
     hotelfachfrau:"Bewerbungsmappe_Hotelfachfrau_Halima_Essaouaf.pdf",
     hotelmanagement:"Bewerbungsmappe_Hotelfachfrau_Halima_Essaouaf.pdf",
-    baecker:"Bewerbungsmappe_Baecker_Baeckerin_Halima_Essaouaf.pdf",
+    baecker:"Bewerbungsmappe_Hotelfachfrau_Halima_Essaouaf.pdf",
     systemgastronomie:"Bewerbungsmappe_Fachfrau_fuer_Systemgastronomie_Halima_Essaouaf.pdf",
     spedition:"Bewerbungsmappe_Kauffrau_fuer_Spedition_und_Logistikdienstleistung_Halima_Essaouaf.pdf",
     handel:"Bewerbungsmappe_Kauffrau_im_Einzelhandel_Halima_Essaouaf.pdf",
     industrie:"Bewerbungsmappe_Industriekauffrau_Halima_Essaouaf.pdf",
     buero:"Bewerbungsmappe_Kauffrau_fuer_Bueromanagement_Halima_Essaouaf.pdf",
-    tourismus:"Bewerbung Kauffrau Tourismus Freizeit Halima Essaouaf.pdf"
+    tourismus:"Bewerbungsmappe_Hotelfachfrau_Halima_Essaouaf.pdf"
   }
 };
 
