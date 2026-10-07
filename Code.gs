@@ -1849,7 +1849,7 @@ function traiterAusbildungCandidatures() {
       const statut = String(row[COL.STATUT] || "").trim();
       const roleCible = String(row[COL.ROLE_CIBLE] || "").trim();
       const intitule = String(row[COL.INTITULE] || "").trim();
-      const entreprise = String(row[COL.ENTREPRISE] || "").trim() || "Unternehmen Deutschland";
+      const entreprise = String(row[COL.ENTREPRISE] || "").trim();
       const emailCible = extractFirstEmail(row[COL.EMAILS_RH] || "");
       const dateEnvoi = row[COL.DATE_CANDIDATURE] ? new Date(row[COL.DATE_CANDIDATURE]) : null;
       const rowNum = i + 1;
