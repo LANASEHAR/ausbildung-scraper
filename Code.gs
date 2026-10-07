@@ -1557,6 +1557,49 @@ function extractOfferSignals_(text, specialite) {
   return found;
 }
 
+function normaliserEntrepriseEmail_(value) {
+  const original = String(value || "").trim();
+  if (!original) return "";
+
+  const normalized = original
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // Valeurs génériques/placeholder : elles ne doivent JAMAIS apparaître
+  // dans le mail et ne doivent jamais être précédées de "bei".
+  if (
+    normalized === "entreprise non indiquee" ||
+    normalized === "entreprise non indique" ||
+    normalized === "entreprise non renseignee" ||
+    normalized === "unternehmen deutschland" ||
+    normalized === "unternehmen nicht angegeben" ||
+    normalized === "nicht angegeben" ||
+    normalized === "nicht bekannt" ||
+    normalized === "unbekannt" ||
+    normalized === "non indiquee" ||
+    normalized === "non indique" ||
+    normalized === "n/a" ||
+    normalized === "na" ||
+    normalized === "-"
+  ) {
+    return "";
+  }
+
+  // Protection supplémentaire si le placeholder est noyé dans une chaîne.
+  if (
+    /entreprise\s+non\s+indiquee/.test(normalized) ||
+    /unternehmen\s+deutschland/.test(normalized) ||
+    /unternehmen\s+(nicht\s+)?angegeben/.test(normalized)
+  ) {
+    return "";
+  }
+
+  return original;
+}
+
 function getNaturalFitParagraph_(specialite, signals, entreprise) {
   const signalText = signals.length
     ? signals.slice(0, 3).join(", ")
