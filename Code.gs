@@ -113,6 +113,16 @@ function normalizeEmail(email) {
  * Une seule adresse est conservée dans le Sheet afin de garantir
  * l'unicité des contacts.
  */
+
+/**
+ * HARD BLOCKLIST — ne jamais envoyer vers Vertan/Betran.
+ * Le blocage s'applique à l'adresse ET au nom de l'entreprise.
+ */
+function isBlockedRecipient_(email, entreprise) {
+  const haystack = String(email || "").toLowerCase() + " " + String(entreprise || "").toLowerCase();
+  return /vertan|betran/.test(haystack);
+}
+
 function extractFirstEmail(emailsRh) {
   if (!emailsRh) return "";
   const matches = String(emailsRh).match(/[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}/ig) || [];
@@ -1900,6 +1910,11 @@ function traiterAusbildungCandidatures() {
       const rowNum = i + 1;
 
       if (!emailCible || !isValidEmail(emailCible)) {
+        continue;
+      }
+
+      if (isBlockedRecipient_(emailCible, entreprise)) {
+        Logger.log("🚫 DESTINATAIRE BLOQUÉ — aucun email vers Vertan/Betran : " + emailCible + " / " + entreprise);
         continue;
       }
 
