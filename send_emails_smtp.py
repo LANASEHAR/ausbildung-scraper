@@ -341,6 +341,15 @@ def recuperer_cv_depuis_drive(specialite: str, cv_cache: dict):
     return cv_info
 
 
+
+BLOCKED_RECIPIENT_TOKENS = ("vertan", "betran")
+
+def is_blocked_recipient(email: str, company: str = "") -> bool:
+    """Hard safety block: never send to Vertan/Betran."""
+    haystack = f"{email or ''} {company or ''}".lower()
+    return any(token in haystack for token in BLOCKED_RECIPIENT_TOKENS)
+
+
 def is_valid_email(email: str) -> bool:
     """Reject malformed addresses before they ever reach Gmail SMTP."""
     value = str(email or "").strip().lower()
@@ -478,6 +487,11 @@ def main():
 
             if not is_valid_email(email_cible):
                 print(f"⏭️ Ligne {row_index} : email invalide ignoré ({email_cible})")
+                continue
+
+            entreprise = item.get("entreprise", "")
+            if is_blocked_recipient(email_cible, entreprise):
+                print(f"🚫 DESTINATAIRE BLOQUÉ — aucun email vers Vertan/Betran : {email_cible} / {entreprise}")
                 continue
 
             if email_cible in emails_envoyes_ce_run:
