@@ -61,10 +61,18 @@ def main():
                 total_saved += process_batch(batch, batch_number)
                 batch = []
 
-        # Always flush the final partial batch.
-        if batch and not scraper.scrape_time_exhausted():
+        # Always flush the final partial batch, including when the discovery
+        # deadline is reached. The deadline stops discovering new links; it must
+        # not silently discard links already collected in memory. The 30-minute
+        # runner safety margin is reserved for processing and uploading this batch.
+        if batch:
             batch_number += 1
+            print(
+                f"[*] Flush final du batch {batch_number}: {len(batch)} liens "
+                f"(temps restant: {scraper.scrape_time_remaining() / 60:.1f} min)"
+            )
             total_saved += process_batch(batch, batch_number)
+            batch = []
 
     except KeyboardInterrupt:
         print("[!] Interruption reçue — flush du dernier batch avant sortie.")
