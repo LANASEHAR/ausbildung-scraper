@@ -946,6 +946,7 @@ def recover_employer_name(url="", title="", location="", email="", soup=None, te
             pass
 
     # Final identity recovery: search the exact offer, never accept a job-board name.
+    # If identity cannot be verified, preserve an empty company field.
     if title:
         query = '"' + clean(title) + '" ' + clean(location) + " Ausbildung Arbeitgeber"
         try:
