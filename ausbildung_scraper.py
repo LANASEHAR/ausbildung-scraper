@@ -974,17 +974,19 @@ def ensure_employer_name(job, url="", soup=None, text="", details=None):
             url=url, title=job.get("intitule",""), location=job.get("lieu",""),
             email=job.get("emails_rh",""), soup=soup, text=text, details=details
         )
-    job["entreprise"] = candidate or "Employeur à identifier"
+    # Never invent or insert a placeholder company name. Keep the field empty
+    # unless the employer was actually extracted from a reliable page/source.
+    job["entreprise"] = candidate or ""
     if candidate:
         print(f"[EMPLOYER] {job.get('intitule','')} -> {candidate}")
     else:
-        print(f"[WARN] Employeur non récupéré: {job.get('intitule','')}")
+        print(f"[WARN] Employeur non récupéré; champ laissé vide: {job.get('intitule','')}")
     return job["entreprise"]
 
 
 def parse_external_detail(link):
     session=make_session(link); host=host_of(link)
-    base={"date_detection":time.strftime("%Y-%m-%d %H:%M"),"date_offre":"","statut":"NOUVEAU","role_cible":"","intitule":"Ausbildung","entreprise":"Entreprise non indiquée","lieu":"Deutschland","emails_rh":"","site_entreprise":"","source":host,"lien":link,"id":"src_"+hashlib.sha256(link.encode()).hexdigest()[:20],"description":""}
+    base={"date_detection":time.strftime("%Y-%m-%d %H:%M"),"date_offre":"","statut":"NOUVEAU","role_cible":"","intitule":"Ausbildung","entreprise":"","lieu":"Deutschland","emails_rh":"","site_entreprise":"","source":host,"lien":link,"id":"src_"+hashlib.sha256(link.encode()).hexdigest()[:20],"description":""}
     try:
         r=session.get(link,timeout=DETAIL_TIMEOUT,allow_redirects=True); r.raise_for_status()
         soup=BeautifulSoup(r.text,"html.parser"); text=clean(soup.get_text(" ",strip=True)); h1=soup.find("h1")
