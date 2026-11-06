@@ -1697,14 +1697,21 @@ def post_json(payload, label):
 
             try:
                 result = response.json()
-            except ValueError:
-                result = {"raw": response.text[:1000]}
+            except ValueError as exc:
+                # HTTP 200 with an HTML login/redirect page is NOT a successful
+                # Google Sheets write. Fail loudly instead of counting it as saved.
+                preview = response.text[:300].replace("\\n", " ")
+                raise RuntimeError(
+                    f"{label}: réponse non-JSON malgré HTTP 200; "
+                    f"vérifier l'URL/le déploiement Apps Script. Réponse: {preview}"
+                ) from exc
 
-            print(f"[*] Réponse Apps Script: {result}")
+            if not isinstance(result, dict) or result.get("status") != "success":
+                raise RuntimeError(
+                    f"{label}: réponse Apps Script inattendue: {str(result)[:1000]}"
+                )
 
-            if isinstance(result, dict) and result.get("status") == "error":
-                raise RuntimeError("Google Apps Script: " + str(result.get("message")))
-
+            print(f"[*] Réponse Apps Script confirmée: {result}")
             return result
 
         except (requests.RequestException, RuntimeError) as exc:
@@ -1734,6 +1741,50 @@ def update_sheet(jobs):
         print("[*] Aucun email/site à mettre à jour dans Google Sheets.")
         return
     return post_json({"action": "update", "jobs": updates}, "Mise à jour emails/sites Google Sheets")
+
+
+def enrich_existing_missing_emails(limit=100):
+    """Enrich a rotating slice of older Sheet rows, not only today's new offers."""
+    limit = max(1, min(int(limit), 500))
+    # Rotate through the missing-email queue between scheduled runs so one
+    # block of unreachable companies cannot starve the rest of the Sheet.
+    data = post_json(
+        {
+            "action": "export_missing_emails",
+            "offset": 0,
+            "limit": limit,
+        },
+        "Lecture des offres historiques sans email",
+    )
+    rows = data.get("rows", []) if isinstance(data, dict) else []
+    if not rows:
+        print("[*] Aucune offre historique sans email à enrichir.")
+        return 0
+
+    # Rotate by time window. Apps Script returns the number of missing rows.
+    total_missing = max(0, int(data.get("total_missing", 0) or 0))
+    if total_missing > limit:
+        offset = (int(time.time() // 7200) * limit) % total_missing
+        if offset:
+            data = post_json(
+                {
+                    "action": "export_missing_emails",
+                    "offset": offset,
+                    "limit": limit,
+                },
+                "Lecture du lot historique tournant",
+            )
+            rows = data.get("rows", []) if isinstance(data, dict) else []
+
+    if not rows:
+        return 0
+
+    print(f"[*] Enrichissement historique: {len(rows)} lignes sans email.")
+    enriched = enrich_missing_emails(rows)
+    found = sum(1 for job in enriched if job.get("emails_rh"))
+    update_sheet(enriched)
+    print(f"[OK] Enrichissement historique terminé: {found} emails trouvés sur {len(rows)} lignes.")
+    return found
 
 
 def main():
