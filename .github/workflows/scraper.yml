@@ -5,8 +5,9 @@ on:
     branches:
       - main
   schedule:
-    # Complete collection every 2 hours.
-    - cron: '0 */2 * * *'
+    # Two complete sessions per day; each session may run up to 4h30.
+    # A 2-hour cadence would queue overlapping 4h30 jobs.
+    - cron: '0 1,13 * * *'
   workflow_dispatch:
 
 concurrency:
