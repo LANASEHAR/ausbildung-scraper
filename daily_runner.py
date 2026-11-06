@@ -41,6 +41,11 @@ def main():
     )
     print("=" * 72)
 
+    # Revisit older rows with no contact email before discovering new offers.
+    # This is bounded and rotates through the Sheet so older rows are not starved.
+    historical_emails = scraper.enrich_existing_missing_emails(limit=100)
+    print(f"[*] Emails historiques récupérés: {historical_emails}")
+
     scraper.start_scrape_clock()
 
     batch = []
