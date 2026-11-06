@@ -21,14 +21,21 @@ def process_batch(links, batch_number):
         f"[*] BATCH {batch_number}: {len(jobs)} offres ciblées "
         f"→ envoi immédiat vers Google Sheets"
     )
-    scraper.send_to_sheet(jobs)
+    result = scraper.send_to_sheet(jobs)
+    if not isinstance(result, dict) or result.get("status") != "success":
+        raise RuntimeError(
+            f"BATCH {batch_number}: Google Sheets n'a pas confirmé l'enregistrement: {result}"
+        )
 
+    added = int(result.get("added", 0) or 0)
+    duplicate_ids = int(result.get("duplicate_ids", 0) or 0)
     email_count = sum(1 for job in jobs if job.get("emails_rh"))
     print(
-        f"[OK] BATCH {batch_number}: {len(jobs)} offres sauvegardées | "
-        f"{email_count} avec email déjà présent"
+        f"[OK] BATCH {batch_number}: {added} nouvelles offres réellement ajoutées "
+        f"| {duplicate_ids} IDs déjà présents ignorés | "
+        f"{email_count} offres avec email"
     )
-    return len(jobs)
+    return added
 
 
 def main():
