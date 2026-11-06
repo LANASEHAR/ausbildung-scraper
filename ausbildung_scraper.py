@@ -1764,7 +1764,7 @@ def enrich_existing_missing_emails(limit=100):
     # Rotate by time window. Apps Script returns the number of missing rows.
     total_missing = max(0, int(data.get("total_missing", 0) or 0))
     if total_missing > limit:
-        offset = (int(time.time() // 7200) * limit) % total_missing
+        offset = (int(time.time() // 43200) * limit) % total_missing
         if offset:
             data = post_json(
                 {
