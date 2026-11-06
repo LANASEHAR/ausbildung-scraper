@@ -868,15 +868,18 @@ function doPost(e) {
       const limit = Math.min(500, Math.max(1, Number(rawData.limit || 500)));
       const rows = [];
       let skipped = 0;
+      let totalMissing = 0;
 
-      for (let i = 1; i < allData.length && rows.length < limit; i++) {
+      for (let i = 1; i < allData.length; i++) {
         const row = allData[i];
         const email = extractFirstEmail(row[COL.EMAILS_RH] || "");
         if (email) continue;
+        totalMissing++;
         if (skipped < offset) {
           skipped++;
           continue;
         }
+        if (rows.length >= limit) continue;
 
         rows.push({
           id: String(row[COL.ID] || "").trim(),
@@ -897,6 +900,7 @@ function doPost(e) {
           offset: offset,
           returned: rows.length,
           total_rows: Math.max(0, allData.length - 1),
+          total_missing: totalMissing,
           rows: rows
         }))
         .setMimeType(ContentService.MimeType.JSON);
@@ -915,7 +919,6 @@ function doPost(e) {
       let updated = 0;
       let duplicateEmails = 0;
       let missingIds = 0;
-      let changed = false;
 
       for (const job of jobs) {
         const jobId = String(job.id || "").trim();
@@ -925,26 +928,28 @@ function doPost(e) {
         }
 
         const rowIndex = idToRow.get(jobId);
+        const rowNumber = rowIndex + 1;
         const currentEmail = extractFirstEmail(allData[rowIndex][COL.EMAILS_RH] || "");
         const newEmail = extractFirstEmail(job.emails_rh || "");
+        const currentSite = String(allData[rowIndex][COL.SITE_ENTREPRISE] || "").trim();
+        const newSite = String(job.site_entreprise || "").trim();
+        const emailChanged = Boolean(newEmail && currentEmail !== newEmail);
+        const siteChanged = Boolean(newSite && currentSite !== newSite);
 
-        if (!newEmail || currentEmail === newEmail) continue;
+        if (!emailChanged && !siteChanged) continue;
 
-        // The same verified company email may legitimately belong to
-        // several duplicate/related offers. Keep it on each matching row.
-        // buildSheetIndexes/sender logic prevents sending the same address twice.
-        allData[rowIndex][COL.EMAILS_RH] = newEmail;
-        if (currentEmail) existingEmails.delete(currentEmail);
-        existingEmails.add(newEmail);
+        // Write only the cells being enriched. Rewriting the entire Sheet from
+        // a stale snapshot can erase rows inserted concurrently by the scraper.
+        if (emailChanged) {
+          sheet.getRange(rowNumber, COL.EMAILS_RH + 1).setValue(newEmail);
+          if (currentEmail) existingEmails.delete(currentEmail);
+          existingEmails.add(newEmail);
+        }
+        if (siteChanged) {
+          sheet.getRange(rowNumber, COL.SITE_ENTREPRISE + 1).setValue(newSite);
+        }
 
         updated++;
-        changed = true;
-      }
-
-      // One batched write for the whole existing data range. This is vastly
-      // faster than thousands of individual getRange().setValue() calls.
-      if (changed && allData.length > 1) {
-        sheet.getRange(1, 1, allData.length, allData[0].length).setValues(allData);
       }
 
       Logger.log("[UPDATE] " + updated + " email(s) mis à jour | doublons email ignorés: " +
