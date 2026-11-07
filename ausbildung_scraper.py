@@ -1718,6 +1718,15 @@ def post_json(payload, label):
             last_error = exc
             print(f"[!] {label} échoué: {exc}")
 
+            # HTTP 200 with HTML (or an unexpected JSON contract) is a
+            # deployment/configuration problem, not a transient network error.
+            # Retrying the same stale /exec URL only wastes the run budget.
+            if isinstance(exc, RuntimeError) and (
+                "réponse non-JSON" in str(exc)
+                or "réponse Apps Script inattendue" in str(exc)
+            ):
+                break
+
             if attempt < WEBHOOK_RETRIES:
                 # Wait long enough for a timed-out Apps Script execution to finish
                 # and release its script lock before retrying.
