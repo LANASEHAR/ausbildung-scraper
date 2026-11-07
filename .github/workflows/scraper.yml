@@ -6,12 +6,11 @@ on:
       - main
   schedule:
     # Two complete sessions per day; each session may run up to 4h30.
-    # A 2-hour cadence would queue overlapping 4h30 jobs.
     - cron: '0 1,13 * * *'
   workflow_dispatch:
 
 concurrency:
-  group: ausbildung-two-hour-scraper
+  group: ausbildung-scraper
   cancel-in-progress: false
 
 permissions:
@@ -89,8 +88,9 @@ jobs:
           print("Preflight OK — syntax, undefined names, helpers and BA parser smoke test passed")
           PY
 
-      - name: Run two-hour scraper
-        # Allow an explicit commit marker to launch an immediate scrape without running the scraper on every push.
+      - name: Run 4h30 scraper
+        # Manual dispatches and explicit [run-scraper] commits launch a full scrape.
+        # Ordinary code pushes run validation only, avoiding accidental long jobs.
         if: github.event_name != 'push' || contains(github.event.head_commit.message, '[run-scraper]')
         env:
           GOOGLE_SHEET_WEBHOOK_URL: ${{ secrets.GOOGLE_SHEET_WEBHOOK_URL }}
