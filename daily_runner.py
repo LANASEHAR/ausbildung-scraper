@@ -44,7 +44,7 @@ def process_batch(links, batch_number):
             "jobs": jobs,
         }
         with open(recovery_path, "a", encoding="utf-8") as recovery_file:
-            recovery_file.write(json.dumps(record, ensure_ascii=False) + "\\n")
+            recovery_file.write(json.dumps(record, ensure_ascii=False) + "\n")
         print(
             f"[RECOVERY] BATCH {batch_number}: {len(jobs)} offres conservées localement "
             f"dans {recovery_path}; Google Sheets NON confirmé. Cause: {exc}"
@@ -146,6 +146,12 @@ def main():
     else:
         print("[OK] Toutes les sources disponibles ont été parcourues.")
     print("[OK] Recherche des emails intégrée au même run du scraper.")
+    if total_recovery_batches:
+        raise RuntimeError(
+            f"{total_recovery_batches} batch(s) non confirmés par Google Sheets. "
+            "Les données sont conservées dans l'artifact de récupération; "
+            "corriger le déploiement Apps Script avant de les réimporter."
+        )
     print("[OK] Run terminé.")
 
 
