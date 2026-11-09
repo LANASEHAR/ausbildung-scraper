@@ -103,18 +103,30 @@ jobs:
 
           try:
               response = requests.get(url, timeout=25, allow_redirects=True)
+              content_type = response.headers.get("content-type", "")
               response.raise_for_status()
-              data = response.json()
+              try:
+                  data = response.json()
+              except ValueError as exc:
+                  preview = " ".join(response.text[:240].split())
+                  host = response.url.split("/")[2] if "://" in response.url else "unknown"
+                  raise SystemExit(
+                      "Google Apps Script health check received non-JSON content. "
+                      f"HTTP={response.status_code}; content-type={content_type!r}; "
+                      f"final-host={host!r}; body-preview={preview!r}. "
+                      "Fix: redeploy Code.gs as a Web App (Execute as: Me; access: Anyone), "
+                      "then update GOOGLE_SHEET_WEBHOOK_URL with the new /exec URL."
+                  ) from exc
+          except SystemExit:
+              raise
           except Exception as exc:
               raise SystemExit(
                   "Google Apps Script health check failed before scraping. "
-                  "The configured URL must be the deployed /exec Web App URL, "
-                  "deployed to execute as the owner and accessible to anyone. "
-                  "The endpoint returned HTML/login content or an HTTP/network error. "
-                  f"Details: {type(exc).__name__}: {exc}"
+                  f"Details: {type(exc).__name__}: {exc}. "
+                  "Check the /exec deployment URL and Web App access settings."
               )
 
-          if data.get("status") != "ok" or data.get("service") != "Ausbildung webhook":
+          if not isinstance(data, dict) or data.get("status") != "ok" or data.get("service") != "Ausbildung webhook":
               raise SystemExit(
                   "Google Apps Script responded with unexpected JSON. "
                   "Expected status=ok and service='Ausbildung webhook'. "
