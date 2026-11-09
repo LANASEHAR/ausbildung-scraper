@@ -5,7 +5,7 @@
  *
  * FONCTIONS PRINCIPALES :
  *   doPost(e)                        → Webhook INSERT + UPDATE avec déduplication par ID/email
- *   traiterAusbildungCandidatures()  → Envoi emails + relances après 7 jours (max 100/run, quota Gmail)
+ *   traiterAusbildungCandidatures()  → Envoi des candidatures initiales uniquement (max 95/24h)
  *   getCV(intitule, roleCible)        → Mapping CV par spécialité Kauffrau
  *   configurerDeclencheurs()          → Installe le trigger horaire automatique
  *
@@ -25,7 +25,7 @@
 const CONFIG={
   NOM:"Halima Essaouaf", EMAIL:"essaouafhalima@gmail.com", TEL:"+212619968131",
   LINKEDIN:"linkedin.com/in/halima-essaouaf-1b4b81202", NOM_ONGLET:"Ausbildung",
-  BATCH_LIMIT:95, DELAI_ENTRE_EMAILS_MS:20000, DELAI_RELANCE_H:7*24, MAX_EXECUTION_MS:5*60*1000,
+  BATCH_LIMIT:95, DELAI_ENTRE_EMAILS_MS:20000, MAX_EXECUTION_MS:5*60*1000,
   CV_FOLDER_NAME:"New Bewerbung",
   CV_MAPPING:{
     fachverkaeufer_lebensmittel:"Bewerbungsmappe_Fachverkaeufer_Lebensmittelhandwerk_Halima_Essaouaf.pdf",
@@ -598,12 +598,12 @@ function doPost(e) {
     const lien = String(rawData.lien || "").trim();
 
     if (type === "RELANCE") {
-      const generated = genererEmailRelance(entreprise, intitule, roleCible);
       return ContentService
         .createTextOutput(JSON.stringify({
-          status: "success", action: "generate_email", type: type,
-          titre_poste: generated.titrePoste, subject: "Nachfassaktion – Bewerbung als " + generated.titrePoste + " – " + CONFIG.NOM,
-          html_body: generated.body
+          status: "disabled",
+          action: "generate_email",
+          type: "RELANCE",
+          message: "Les relances Ausbildung sont désactivées. Seules les candidatures initiales sont autorisées."
         }))
         .setMimeType(ContentService.MimeType.JSON);
     }
@@ -722,76 +722,7 @@ function doPost(e) {
         pushCandidate(i, "INITIAL");
       }
 
-      // 2) Ensuite : relances normales après le délai configuré.
-      for (let i = 1; i < allData.length && items.length < limit; i++) {
-        const row = allData[i];
-        const statut = String(row[COL.STATUT] || "").trim();
-        if (statut !== "CANDIDATURE_ENVOYEE") continue;
-
-        const dateEnvoi = row[COL.DATE_CANDIDATURE]
-          ? new Date(row[COL.DATE_CANDIDATURE])
-          : null;
-        if (!dateEnvoi || isNaN(dateEnvoi.getTime())) continue;
-
-        const diffHeures = (new Date() - dateEnvoi) / (1000 * 60 * 60);
-        if (diffHeures < CONFIG.DELAI_RELANCE_H) continue;
-
-        pushCandidate(i, "RELANCE");
-      }
-
-      // 3) File de secours : si on n'arrive pas à 80 avec les nouvelles
-      // candidatures + relances normales, réutiliser des candidatures déjà
-      // envoyées. On impose un âge minimal de 2h pour éviter qu'un retry du
-      // même workflow renvoie immédiatement les mêmes emails.
-      if (allowRetries && items.length < limit) {
-        const now = new Date();
-
-        for (let i = 1; i < allData.length && items.length < limit; i++) {
-          const row = allData[i];
-          const statut = String(row[COL.STATUT] || "").trim();
-
-          if (statut !== "CANDIDATURE_ENVOYEE" && statut !== "RELANCE_EFFECTUEE") {
-            continue;
-          }
-
-          const email = extractFirstEmail(row[COL.EMAILS_RH] || "");
-          if (!email || !sentEmails.has(email) || seenEmails.has(email)) continue;
-
-          const dateDernierEnvoi =
-            statut === "RELANCE_EFFECTUEE" && row[COL.DATE_RELANCE]
-              ? new Date(row[COL.DATE_RELANCE])
-              : row[COL.DATE_CANDIDATURE]
-                ? new Date(row[COL.DATE_CANDIDATURE])
-                : null;
-
-          if (!dateDernierEnvoi || isNaN(dateDernierEnvoi.getTime())) continue;
-
-          const ageHeures = (now - dateDernierEnvoi) / (1000 * 60 * 60);
-          if (ageHeures < retryMinAgeHours) continue;
-
-          retryCandidates.push(i);
-        }
-
-        // Les plus anciens envois sont repris en premier.
-        retryCandidates.sort((a, b) => {
-          const da = new Date(
-            allData[a][COL.DATE_RELANCE] ||
-            allData[a][COL.DATE_CANDIDATURE] ||
-            0
-          ).getTime() || 0;
-          const db = new Date(
-            allData[b][COL.DATE_RELANCE] ||
-            allData[b][COL.DATE_CANDIDATURE] ||
-            0
-          ).getTime() || 0;
-          return da - db;
-        });
-
-        for (const i of retryCandidates) {
-          if (items.length >= limit) break;
-          pushCandidate(i, "RETRY");
-        }
-      }
+      // Aucun suivi ni renvoi : seules les candidatures initiales sont envoyées.
 
       return ContentService
         .createTextOutput(JSON.stringify({
@@ -1758,13 +1689,12 @@ function registerUserSend_() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FONCTION PRINCIPALE — ENVOIS & RELANCES
+// FONCTION PRINCIPALE — CANDIDATURES INITIALES UNIQUEMENT
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Traite toutes les lignes du Google Sheet Ausbildung :
- *   - Statut "NOUVEAU"             → Envoie candidature initiale + CV
- *   - Statut "CANDIDATURE_ENVOYEE" → Envoie relance 48h si délai atteint
+ * Traite uniquement les lignes "NOUVEAU" dont l'adresse n'a jamais reçu
+ * de candidature. Aucun suivi, relance ou renvoi d'un email déjà envoyé.
  * Maximum CONFIG.BATCH_LIMIT envois par exécution.
  */
 function extrairePriorite(roleCible) {
@@ -1861,16 +1791,8 @@ function traiterAusbildungCandidatures() {
       rowIndexes.push(i);
     }
 
-    // Relances remain eligible and are handled separately by the date check.
-    for (let i = 1; i < data.length; i++) {
-      const status = String(data[i][COL.STATUT] || "").trim();
-      if (status === "CANDIDATURE_ENVOYEE") rowIndexes.push(i);
-    }
-
-    // Nouvelles candidatures d'abord.
-    // Pour les nouvelles offres : plus récente → plus ancienne.
-    // Les priorités région/Ausbildung servent seulement en cas d'égalité.
-    // Les relances viennent ensuite, avec les plus anciennes candidatures à relancer en premier.
+    // Seules les nouvelles candidatures sont éligibles.
+    // Les lignes déjà envoyées ne sont jamais remises dans la file.
     rowIndexes.sort((a, b) => {
       const statusA = String(data[a][COL.STATUT] || "").trim();
       const statusB = String(data[b][COL.STATUT] || "").trim();
@@ -1923,9 +1845,7 @@ function traiterAusbildungCandidatures() {
         continue;
       }
 
-      // Protection permanente contre une DEUXIÈME CANDIDATURE INITIALE
-      // à la même adresse. Une relance 48h reste autorisée pour la ligne
-      // déjà envoyée.
+      // Protection permanente contre tout second email à la même adresse.
       if (emailsEnvoyesCetteExecution.has(emailCible)) {
         continue;
       }
@@ -1991,58 +1911,7 @@ function traiterAusbildungCandidatures() {
         continue;
       }
 
-      // ── RELANCE APRÈS 7 JOURS ─────────────────────────────────────────────
-      if (statut === "CANDIDATURE_ENVOYEE" && dateEnvoi) {
-        const diffHeures = (now - dateEnvoi) / (1000 * 60 * 60);
 
-        if (diffHeures < CONFIG.DELAI_RELANCE_H) {
-          continue;
-        }
-
-        // IMPORTANT : si on relance, on autorise explicitement cette adresse
-        // une seconde fois. C'est la seule exception à la règle "pas de
-        // candidature initiale deux fois".
-        const specialite = detecterSpecialite(intitule, roleCible);
-
-        if (!(specialite in cvCache)) {
-          cvCache[specialite] = getCV(intitule, roleCible);
-        }
-
-        const cvFile = cvCache[specialite];
-        const { titrePoste, body } = genererEmailRelance(
-          entreprise, intitule, roleCible
-        );
-        const sujet = "Nachfassaktion – Bewerbung als " + titrePoste + " – " + CONFIG.NOM;
-
-        try {
-          GmailApp.sendEmail(emailCible, sujet, "", {
-            htmlBody: body,
-            attachments: cvFile ? [cvFile.getAs(MimeType.PDF)] : [],
-            name: CONFIG.NOM,
-            replyTo: Session.getEffectiveUser().getEmail() || CONFIG.EMAIL,
-          });
-
-          registerUserSend_();
-
-          const dateRelanceNow = new Date();
-          data[i][COL.STATUT] = "RELANCE_EFFECTUEE";
-          data[i][COL.DATE_RELANCE] = dateRelanceNow;
-          pendingStatusUpdates.push([rowNum, "RELANCE_EFFECTUEE"]);
-          pendingDateUpdates.push([rowNum, dateRelanceNow]);
-
-          compteur++;
-          emailsEnvoyesCetteExecution.add(emailCible);
-
-          Logger.log("🔄 RELANCE #" + compteur + "/" + limite + " → " + emailCible);
-
-          if (compteur < limite) {
-            Utilities.sleep(CONFIG.DELAI_ENTRE_EMAILS_MS);
-          }
-
-        } catch (err) {
-          Logger.log("❌ ERREUR RELANCE ligne " + rowNum + " / " + emailCible + ": " + err.toString());
-        }
-      }
     }
 
     // Écritures Sheet regroupées en fin de run pour réduire fortement les accès API.
