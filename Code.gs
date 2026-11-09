@@ -542,6 +542,20 @@ function doPost(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 
+  // Deployment handshake: GET alone is insufficient because Google may return
+  // a generic HTML interstitial while the POST endpoint is not correctly deployed.
+  // Keep this check side-effect-free so Actions can validate the live deployment.
+  if (rawData && rawData.action === "health") {
+    return ContentService
+      .createTextOutput(JSON.stringify({
+        status: "success",
+        action: "health",
+        service: "Ausbildung webhook",
+        deployment_version: "2026-11-09-post-health-v1"
+      }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
   if (rawData && rawData.action === "get_cv") {
     const specialite = String(rawData.specialite || "").trim().toLowerCase();
 
