@@ -10,7 +10,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ausbildung-scraper
+  # Keep quick validation-only pushes from waiting behind a 4h30 scheduled scrape.
+  group: ${{ github.event_name == 'push' && !contains(github.event.head_commit.message, '[run-scraper]') && 'ausbildung-validation' || 'ausbildung-scraper' }}
   cancel-in-progress: false
 
 permissions:
