@@ -133,7 +133,43 @@ jobs:
                   f"Received keys: {sorted(data.keys())}"
               )
 
-          print("Google Apps Script Web App is reachable and returned valid health JSON.")
+          # GET health alone can pass while POST is served an HTML interstitial.
+          # Verify the exact write endpoint with a side-effect-free POST handshake.
+          try:
+              post = requests.post(
+                  url,
+                  json={"action": "health"},
+                  timeout=(15, 30),
+                  allow_redirects=True,
+              )
+              post.raise_for_status()
+              post_data = post.json()
+          except Exception as exc:
+              raise SystemExit(
+                  "Google Apps Script POST health check failed. The live /exec "
+                  "deployment is not serving the current Code.gs POST handler. "
+                  "Redeploy Code.gs as Web App (Execute as: Me; access: Anyone), "
+                  "then rerun. Do NOT reimport recovery data before this check passes. "
+                  f"Details: {type(exc).__name__}: {exc}"
+              )
+
+          expected_version = "2026-11-09-post-health-v1"
+          if (
+              not isinstance(post_data, dict)
+              or post_data.get("status") != "success"
+              or post_data.get("action") != "health"
+              or post_data.get("service") != "Ausbildung webhook"
+              or post_data.get("deployment_version") != expected_version
+          ):
+              raise SystemExit(
+                  "Google Apps Script POST endpoint is outdated or misconfigured. "
+                  "Deploy the latest Code.gs as a new Web App version (Execute as: Me; "
+                  "access: Anyone), update GOOGLE_SHEET_WEBHOOK_URL if the deployment "
+                  "URL changed, then rerun. Received: "
+                  f"{str(post_data)[:500]}"
+              )
+
+          print("Google Apps Script GET + POST health checks passed; deployment version is current.")
           PY
 
       - name: Run 4h30 scraper
