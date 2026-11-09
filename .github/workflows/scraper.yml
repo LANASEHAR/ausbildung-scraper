@@ -88,6 +88,41 @@ jobs:
           print("Preflight OK — syntax, undefined names, helpers and BA parser smoke test passed")
           PY
 
+      - name: Verify Google Apps Script Web App before scraping
+        env:
+          GOOGLE_SHEET_WEBHOOK_URL: ${{ secrets.GOOGLE_SHEET_WEBHOOK_URL }}
+        run: |
+          python - <<'PY'
+          import os
+          import requests
+
+          url = os.environ.get("GOOGLE_SHEET_WEBHOOK_URL", "").strip()
+          if not url:
+              raise SystemExit("GOOGLE_SHEET_WEBHOOK_URL secret is empty.")
+
+          try:
+              response = requests.get(url, timeout=25, allow_redirects=True)
+              response.raise_for_status()
+              data = response.json()
+          except Exception as exc:
+              raise SystemExit(
+                  "Google Apps Script health check failed before scraping. "
+                  "The configured URL must be the deployed /exec Web App URL, "
+                  "deployed to execute as the owner and accessible to anyone. "
+                  "The endpoint returned HTML/login content or an HTTP/network error. "
+                  f"Details: {type(exc).__name__}: {exc}"
+              )
+
+          if data.get("status") != "ok" or data.get("service") != "Ausbildung webhook":
+              raise SystemExit(
+                  "Google Apps Script responded with unexpected JSON. "
+                  "Expected status=ok and service='Ausbildung webhook'. "
+                  f"Received keys: {sorted(data.keys())}"
+              )
+
+          print("Google Apps Script Web App is reachable and returned valid health JSON.")
+          PY
+
       - name: Run 4h30 scraper
         # Manual dispatches and explicit [run-scraper] commits launch a full scrape.
         # Ordinary code pushes run validation only, avoiding accidental long jobs.
