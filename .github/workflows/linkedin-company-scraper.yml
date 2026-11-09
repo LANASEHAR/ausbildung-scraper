@@ -39,6 +39,39 @@ jobs:
       - name: Validate
         run: python -m py_compile remote_travel_hospitality_scraper.py
 
+      - name: Verify Google Apps Script Web App before scraping
+        env:
+          GOOGLE_SHEET_WEBHOOK_URL: ${{ secrets.GOOGLE_SHEET_WEBHOOK_URL }}
+        run: |
+          python - <<'PY'
+          import os
+          import requests
+
+          url = os.environ.get("GOOGLE_SHEET_WEBHOOK_URL", "").strip()
+          if not url:
+              raise SystemExit("GOOGLE_SHEET_WEBHOOK_URL secret is empty.")
+
+          try:
+              response = requests.get(url, timeout=25, allow_redirects=True)
+              response.raise_for_status()
+              data = response.json()
+          except Exception as exc:
+              raise SystemExit(
+                  "Google Apps Script health check failed before scraping. "
+                  "Use the deployed /exec Web App URL, execute as the owner, "
+                  "with access available to anyone. "
+                  f"Details: {type(exc).__name__}: {exc}"
+              )
+
+          if data.get("status") != "ok" or data.get("service") != "Ausbildung webhook":
+              raise SystemExit(
+                  "Unexpected Apps Script health response; expected "
+                  "status=ok and service='Ausbildung webhook'."
+              )
+
+          print("Google Apps Script Web App is reachable.")
+          PY
+
       - name: Scrape remote leads
         env:
           GOOGLE_SHEET_WEBHOOK_URL: ${{ secrets.GOOGLE_SHEET_WEBHOOK_URL }}
