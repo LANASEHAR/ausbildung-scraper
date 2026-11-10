@@ -1074,9 +1074,6 @@ function getTitreAusbildung(
     systemgastronomie:
       "Fachfrau/Fachmann für Systemgastronomie",
 
-    einzelhandel:
-      "Kauffrau im Einzelhandel",
-
     buero:
       "Kaufmann/-frau für Büromanagement",
 

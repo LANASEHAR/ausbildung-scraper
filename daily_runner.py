@@ -7,6 +7,66 @@ import ausbildung_scraper as scraper
 # Operational batch size, NOT a result cap. The run keeps discovering offers
 # until the shared time budget expires.
 DISCOVERY_BATCH_SIZE = 100
+RECOVERY_PATH = "recovery/unsent_batches.jsonl"
+
+
+def _save_recovery_batch(batch_number, jobs, reason):
+    os.makedirs(os.path.dirname(RECOVERY_PATH), exist_ok=True)
+    record = {
+        "saved_at_utc": datetime.now(timezone.utc).isoformat(),
+        "batch_number": batch_number,
+        "count": len(jobs),
+        "reason": str(reason),
+        "jobs": jobs,
+    }
+    with open(RECOVERY_PATH, "a", encoding="utf-8") as recovery_file:
+        recovery_file.write(json.dumps(record, ensure_ascii=False) + "\n")
+    print(
+        f"[RECOVERY] BATCH {batch_number}: {len(jobs)} offres conservées localement "
+        f"dans {RECOVERY_PATH}; Google Sheets NON confirmé. Cause: {reason}"
+    )
+
+
+def _retry_recovery_batches():
+    """Retry any batches saved locally due to transient Apps Script lock timeouts."""
+    if not os.path.exists(RECOVERY_PATH):
+        return 0, 0
+
+    with open(RECOVERY_PATH, "r", encoding="utf-8") as f:
+        records = [json.loads(line) for line in f if line.strip()]
+
+    if not records:
+        return 0, 0
+
+    print(f"[*] Reprise finale de {len(records)} batch(s) en attente dans {RECOVERY_PATH}...")
+    remaining = []
+    recovered_added = 0
+
+    for record in records:
+        batch_no = record.get("batch_number", "?")
+        jobs = record.get("jobs") or []
+        if not jobs:
+            continue
+        try:
+            result = scraper.send_to_sheet(jobs)
+            if not isinstance(result, dict) or result.get("status") != "success":
+                raise RuntimeError(f"Réponse inattendue: {result}")
+            added = int(result.get("added", 0) or 0)
+            recovered_added += added
+            print(f"[OK] Reprise BATCH {batch_no}: {added} nouvelles offres confirmées.")
+        except Exception as exc:
+            record["reason"] = str(exc)
+            remaining.append(record)
+            print(f"[!] Reprise BATCH {batch_no} toujours en échec: {exc}")
+
+    if remaining:
+        with open(RECOVERY_PATH, "w", encoding="utf-8") as f:
+            for rec in remaining:
+                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    else:
+        os.remove(RECOVERY_PATH)
+
+    return recovered_added, len(remaining)
 
 
 def process_batch(links, batch_number):
@@ -32,23 +92,7 @@ def process_batch(links, batch_number):
                 f"Google Sheets n'a pas confirmé l'enregistrement: {result}"
             )
     except Exception as exc:
-        # Never discard offers when the Apps Script deployment/webhook is down.
-        # The workflow uploads this JSONL file as a recovery artifact.
-        os.makedirs("recovery", exist_ok=True)
-        recovery_path = "recovery/unsent_batches.jsonl"
-        record = {
-            "saved_at_utc": datetime.now(timezone.utc).isoformat(),
-            "batch_number": batch_number,
-            "count": len(jobs),
-            "reason": str(exc),
-            "jobs": jobs,
-        }
-        with open(recovery_path, "a", encoding="utf-8") as recovery_file:
-            recovery_file.write(json.dumps(record, ensure_ascii=False) + "\n")
-        print(
-            f"[RECOVERY] BATCH {batch_number}: {len(jobs)} offres conservées localement "
-            f"dans {recovery_path}; Google Sheets NON confirmé. Cause: {exc}"
-        )
+        _save_recovery_batch(batch_number, jobs, exc)
         return -1
 
     added = int(result.get("added", 0) or 0)
@@ -108,10 +152,6 @@ def main():
                     total_saved += saved
                 batch = []
 
-        # Always flush the final partial batch, including when the discovery
-        # deadline is reached. The deadline stops discovering new links; it must
-        # not silently discard links already collected in memory. The 30-minute
-        # runner safety margin is reserved for processing and uploading this batch.
         if batch:
             batch_number += 1
             print(
@@ -134,6 +174,11 @@ def main():
                 total_recovery_batches += 1
             else:
                 total_saved += saved
+
+    if total_recovery_batches:
+        recovered_added, remaining_batches = _retry_recovery_batches()
+        total_saved += recovered_added
+        total_recovery_batches = remaining_batches
 
     print("=" * 72)
     print(
