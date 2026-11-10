@@ -605,6 +605,9 @@ def _format_ba_location(details):
 
 def api_search_page(session, query, page):
     """Search Ausbildung through BA's public Jobsuche API."""
+    if page > 100:
+        return []
+
     endpoint_variants = [
         (BA_API_SEARCH_URL, {"angebotsart": 4, "was": query, "page": page, "size": BA_API_SIZE, "sort": "Aktualitaet"}),
         (BA_API_SEARCH_URL, {"angebotsart": 4, "was": query, "page": page, "size": BA_API_SIZE}),
@@ -617,6 +620,9 @@ def api_search_page(session, query, page):
             try:
                 session.headers.update(api_headers())
                 r = session.get(endpoint, params=params, timeout=DETAIL_TIMEOUT)
+                if r.status_code == 400:
+                    # BA API caps pagination at 10,000 results (page 100) with HTTP 400.
+                    return []
                 if r.status_code in (403, 429):
                     wait_s = API_BACKOFF[min(attempt, len(API_BACKOFF) - 1)]
                     print(f"[!] BA API {r.status_code} {endpoint} page {page} — retry {attempt + 1}/{API_RETRIES} dans {wait_s:.0f}s")

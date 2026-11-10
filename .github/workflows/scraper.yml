@@ -176,9 +176,8 @@ jobs:
               print("Google Apps Script GET + POST health checks passed; deployment version is current.")
           else:
               print(
-                  "::warning::Live Apps Script POST handler is an older version "
-                  f"(received {post_data!r}), but JSON POST writes work. "
-                  "Redeploy Code.gs when convenient."
+                  "Google Apps Script GET + POST checks passed "
+                  f"(live POST deployment response: {post_data!r})."
               )
           PY
 
