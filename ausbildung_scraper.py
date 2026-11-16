@@ -77,8 +77,50 @@ AUSBILDUNG_DE_PROFESSION_SLUGS = [
 
 AZUBIYO_PROFESSION_SLUGS = [
     "hotelfachmann",
+    "fachmann-fuer-systemgastronomie",
     "kaufmann-im-einzelhandel",
+    "kaufmann-fuer-spedition-und-logistikdienstleistung",
+    "kaufmann-im-gross-und-aussenhandelsmanagement",
     "industriekaufmann",
+]
+
+AUBI_PLUS_BERUF_URLS = [
+    "https://www.aubi-plus.de/berufe/hotelfachmann-hotelfachfrau-91/ausbildung/",
+    "https://www.aubi-plus.de/berufe/kaufmann-kauffrau-fuer-hotelmanagement-92/ausbildung/",
+    "https://www.aubi-plus.de/berufe/fachmann-fachfrau-fuer-systemgastronomie-89/ausbildung/",
+    "https://www.aubi-plus.de/berufe/kaufmann-kauffrau-im-einzelhandel-111/ausbildung/",
+    "https://www.aubi-plus.de/berufe/kaufmann-kauffrau-fuer-spedition-und-logistikdienstleistung-117/ausbildung/",
+    "https://www.aubi-plus.de/berufe/kaufmann-kauffrau-fuer-gross-und-aussenhandelsmanagement-113/ausbildung/",
+    "https://www.aubi-plus.de/berufe/industriekaufmann-industriekauffrau-96/ausbildung/",
+]
+
+AZUBI_DE_QUERIES = [
+    "Hotelfachmann",
+    "Hotelmanagement",
+    "Systemgastronomie",
+    "Einzelhandel",
+    "Spedition und Logistikdienstleistung",
+    "Groß- und Außenhandelsmanagement",
+    "Industriekaufmann",
+]
+
+JOBWARE_SLUGS = [
+    "ausbildung-hotelfachmann",
+    "ausbildung-hotelkaufmann",
+    "ausbildung-systemgastronomie",
+    "ausbildung-kaufmann-im-einzelhandel",
+    "ausbildung-spedition",
+    "ausbildung-gross-und-aussenhandel",
+    "ausbildung-industriekaufmann",
+]
+
+SPONTANEOUS_CITIES = [
+    "Passau", "Regensburg", "Landshut", "Deggendorf", "Straubing", "Garmisch-Partenkirchen", "Rosenheim", "Traunstein", "Berchtesgaden", "Kempten", "Oberstdorf",
+    "Erfurt", "Jena", "Weimar", "Gera", "Dresden", "Leipzig", "Chemnitz", "Zwickau", "Bautzen",
+    "Stuttgart", "Karlsruhe", "Mannheim", "Heidelberg", "Ulm", "Heilbronn", "Freiburg", "Offenburg", "Villingen-Schwenningen", "Konstanz", "Friedrichshafen", "Ravensburg", "Lörrach",
+    "Rostock", "Schwerin", "Wismar", "Stralsund", "Greifswald", "Neubrandenburg", "Usedom",
+    "Düsseldorf", "Köln", "Bonn", "Aachen", "Dortmund", "Essen", "Münster", "Bielefeld", "Siegen", "Arnsberg", "Olpe", "Meschede", "Iserlohn", "Paderborn",
+    "Osnabrück", "Lingen", "Papenburg", "Meppen", "Oldenburg", "Nordhorn", "Saarbrücken", "Trier", "Kaiserslautern", "Koblenz", "Landau", "Kehl",
 ]
 
 ROLE_PRIORITY = [
@@ -276,6 +318,8 @@ CONTACT_WORDS = (
 
 BAD_SITE_DOMAINS = {
     "arbeitsagentur.de", "azubiyo.de", "ausbildung.de", "aubi-plus.de",
+    "go-ausbildung.de", "meinestelle.de", "azubistelle.de", "monster.de",
+    "meine-ausbildung-in-deutschland.de", "indexinternet.de",
     "yourfirm.de", "hotelcareer.de", "hogapage.de", "dehoga.de",
     "systemgastronomie-ausbildung.de", "logistikmitarbeiter.de",
     "gastgebervonmorgen.de", "ihk-lehrstellenboerse.de",
@@ -303,9 +347,11 @@ ASSET_EXTENSIONS = (
 
 BAD_EMAIL_DOMAINS = {
     "arbeitsagentur.de", "ausbildung.de", "azubiyo.de", "aubi-plus.de",
+    "go-ausbildung.de", "meinestelle.de", "azubistelle.de", "monster.de",
+    "meine-ausbildung-in-deutschland.de", "indexinternet.de",
     "hotelcareer.de", "hogapage.de", "yourfirm.de", "ihk-lehrstellenboerse.de",
     "heyjobs.co", "azubi.de", "stepstone.de", "indeed.com", "linkedin.com",
-    "xing.com", "gelbeseiten.de", "dasoertliche.de", "11880.com",
+    "xing.com", "jobware.de", "gelbeseiten.de", "dasoertliche.de", "11880.com",
     "example.com", "example.org", "example.net", "schema.org", "w3.org",
     "sentry.io", "wixpress.com", "google.com", "googleapis.com", "gstatic.com",
     "bing.com", "duckduckgo.com", "cloudflare.com", "facebook.com",
@@ -817,13 +863,297 @@ def _iter_azubiyo_links(session, seen):
             time.sleep(random.uniform(*SEARCH_DELAY))
 
 
+def _iter_azubi_de_links(session, seen):
+    """Directly scrape offer URLs from azubi.de."""
+    for q in AZUBI_DE_QUERIES:
+        if scrape_time_exhausted():
+            return
+        for page in range(1, 5):
+            if scrape_time_exhausted():
+                return
+            url = f"https://www.azubi.de/suche?text={quote_plus(q)}&location="
+            if page > 1:
+                url += f"&page={page}"
+            try:
+                r = session.get(url, timeout=DETAIL_TIMEOUT)
+                if not r.ok:
+                    break
+                soup = BeautifulSoup(r.text, "html.parser")
+                new_on_page = 0
+                for a in soup.select("a[href*='/ausbildungsplatz/']"):
+                    href = urljoin("https://www.azubi.de", a.get("href", "").split("#", 1)[0].split("?", 1)[0])
+                    if not re.search(r"/ausbildungsplatz/\d+", href) or href in seen:
+                        continue
+                    seen.add(href)
+                    new_on_page += 1
+                    yield href
+                print(f"[+] azubi.de ({q} p.{page}): +{new_on_page} offres")
+                if new_on_page == 0:
+                    break
+            except requests.RequestException as exc:
+                print(f"[!] azubi.de erreur ({q} p.{page}): {exc}")
+                break
+            time.sleep(random.uniform(*SEARCH_DELAY))
+
+
+def _iter_aubi_plus_links(session, seen):
+    """Directly scrape offer URLs from aubi-plus.de."""
+    for url in AUBI_PLUS_BERUF_URLS:
+        if scrape_time_exhausted():
+            return
+        try:
+            r = session.get(url, timeout=DETAIL_TIMEOUT)
+            if not r.ok:
+                continue
+            soup = BeautifulSoup(r.text, "html.parser")
+            new_on_page = 0
+            for a in soup.select("a[href^='/ausbildung/']"):
+                href = urljoin("https://www.aubi-plus.de", a.get("href", "").split("#", 1)[0])
+                if not re.search(r"-\d+/?$", href) or href in seen:
+                    continue
+                seen.add(href)
+                new_on_page += 1
+                yield href
+            print(f"[+] aubi-plus.de ({url.split('/')[-3]}): +{new_on_page} offres")
+        except requests.RequestException as exc:
+            print(f"[!] aubi-plus.de erreur ({url}): {exc}")
+        time.sleep(random.uniform(*SEARCH_DELAY))
+
+
+def _iter_go_ausbildung_links(session, seen):
+    """Directly scrape offer URLs from go-ausbildung.de (web & mobile app companion)."""
+    for q in AZUBI_DE_QUERIES:
+        if scrape_time_exhausted():
+            return
+        url = f"https://www.go-ausbildung.de/search?search={quote_plus(q)}"
+        try:
+            r = session.get(url, timeout=DETAIL_TIMEOUT)
+            if not r.ok:
+                continue
+            soup = BeautifulSoup(r.text, "html.parser")
+            new_on_page = 0
+            for a in soup.select("a[href^='/job/']"):
+                href = urljoin("https://www.go-ausbildung.de", a.get("href", "").split("#", 1)[0])
+                if href in seen:
+                    continue
+                seen.add(href)
+                new_on_page += 1
+                yield href
+            print(f"[+] go-ausbildung.de ({q}): +{new_on_page} offres")
+        except requests.RequestException as exc:
+            print(f"[!] go-ausbildung.de erreur ({q}): {exc}")
+        time.sleep(random.uniform(*SEARCH_DELAY))
+
+
+def _iter_azubistelle_links(session, seen):
+    """Directly scrape offer URLs from azubistelle.de / meinestelle.de."""
+    for q in AZUBI_DE_QUERIES:
+        if scrape_time_exhausted():
+            return
+        url = f"https://www.meinestelle.de/jobs?q=Ausbildung+{quote_plus(q)}"
+        try:
+            r = session.get(url, timeout=DETAIL_TIMEOUT)
+            if not r.ok:
+                continue
+            soup = BeautifulSoup(r.text, "html.parser")
+            new_on_page = 0
+            for a in soup.select("a[href*='/jobs/']"):
+                href = urljoin("https://www.meinestelle.de", a.get("href", "").split("#", 1)[0])
+                if "/jobs/" not in href or href.rstrip("/").endswith("/jobs") or href in seen:
+                    continue
+                low_href = href.lower()
+                if not any(k in low_href for k in ("ausbildung", "auszubildend", "azubi", "aprenticeship", "apprenticeship", "kauf", "hotel", "gastro", "spedition")):
+                    continue
+                seen.add(href)
+                new_on_page += 1
+                yield href
+            print(f"[+] azubistelle.de / meinestelle.de ({q}): +{new_on_page} offres")
+        except requests.RequestException as exc:
+            print(f"[!] azubistelle.de erreur ({q}): {exc}")
+        time.sleep(random.uniform(*SEARCH_DELAY))
+
+
+def _iter_jobware_links(session, seen):
+    """Directly scrape offer URLs from jobware.de."""
+    for slug in JOBWARE_SLUGS:
+        if scrape_time_exhausted():
+            return
+        url = f"https://www.jobware.de/jobs--fuer-{slug}?sort=date%3Adesc"
+        try:
+            r = session.get(url, timeout=DETAIL_TIMEOUT)
+            if not r.ok:
+                continue
+            soup = BeautifulSoup(r.text, "html.parser")
+            new_on_page = 0
+            for a in soup.select("a[href^='/job/']"):
+                href = urljoin("https://www.jobware.de", a.get("href", "").split("#", 1)[0])
+                if href in seen:
+                    continue
+                seen.add(href)
+                new_on_page += 1
+                yield href
+            print(f"[+] jobware.de ({slug}): +{new_on_page} offres")
+        except requests.RequestException as exc:
+            print(f"[!] jobware.de erreur ({slug}): {exc}")
+        time.sleep(random.uniform(*SEARCH_DELAY))
+
+
+def _iter_xing_links(session, seen):
+    """Directly scrape offer URLs from xing.com."""
+    for q in AZUBI_DE_QUERIES:
+        if scrape_time_exhausted():
+            return
+        url = f"https://www.xing.com/jobs/search?keywords=Ausbildung%20{quote(q)}"
+        try:
+            r = session.get(url, timeout=DETAIL_TIMEOUT)
+            if not r.ok:
+                continue
+            soup = BeautifulSoup(r.text, "html.parser")
+            new_on_page = 0
+            for a in soup.select("a[href^='/jobs/']"):
+                href = urljoin("https://www.xing.com", a.get("href", "").split("#", 1)[0].split("?", 1)[0])
+                if not re.search(r"-\d+$", href) or href in seen:
+                    continue
+                seen.add(href)
+                new_on_page += 1
+                yield href
+            print(f"[+] xing.com ({q}): +{new_on_page} offres")
+        except requests.RequestException as exc:
+            print(f"[!] xing.com erreur ({q}): {exc}")
+        time.sleep(random.uniform(*SEARCH_DELAY))
+
+
+def _iter_linkedin_links(session, seen):
+    """Directly scrape offer URLs from LinkedIn public guest jobs API."""
+    for q in AZUBI_DE_QUERIES:
+        if scrape_time_exhausted():
+            return
+        for start in (0, 25):
+            if scrape_time_exhausted():
+                return
+            url = (
+                "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
+                f"?keywords=Ausbildung%20{quote(q)}&location=Germany&start={start}"
+            )
+            try:
+                r = session.get(url, timeout=DETAIL_TIMEOUT)
+                if not r.ok:
+                    break
+                soup = BeautifulSoup(r.text, "html.parser")
+                new_on_page = 0
+                for a in soup.select("a[href*='/jobs/view/']"):
+                    href = a.get("href", "").split("?", 1)[0].split("#", 1)[0]
+                    if "/jobs/view/" not in href or href in seen:
+                        continue
+                    seen.add(href)
+                    new_on_page += 1
+                    yield href
+                print(f"[+] linkedin.com ({q} start={start}): +{new_on_page} offres")
+                if new_on_page == 0:
+                    break
+            except requests.RequestException as exc:
+                print(f"[!] linkedin.com erreur ({q} start={start}): {exc}")
+                break
+            time.sleep(random.uniform(*SEARCH_DELAY))
+
+
+def _iter_ihk_stellenmarkt_links(session, seen):
+    """Directly scrape offer URLs from IHK Stellenmarkt / Meine Ausbildung in Deutschland."""
+    for q in AZUBI_DE_QUERIES:
+        if scrape_time_exhausted():
+            return
+        for page in range(1, 4):
+            if scrape_time_exhausted():
+                return
+            url = f"https://ihk-azubi-stellenmarkt.indexinternet.de/index.php?jobs={quote_plus(q)}&action=suche&page={page}"
+            try:
+                r = session.get(url, timeout=DETAIL_TIMEOUT)
+                if not r.ok:
+                    break
+                soup = BeautifulSoup(r.text, "html.parser")
+                new_on_page = 0
+                for a in soup.select("a[href*='klick_zaehler.cfm']"):
+                    href = a.get("href", "").strip()
+                    if not href or href in seen:
+                        continue
+                    seen.add(href)
+                    new_on_page += 1
+                    yield href
+                print(f"[+] ihk-stellenmarkt ({q} p.{page}): +{new_on_page} offres")
+                if new_on_page == 0:
+                    break
+            except requests.RequestException as exc:
+                print(f"[!] ihk-stellenmarkt erreur ({q} p.{page}): {exc}")
+                break
+            time.sleep(random.uniform(*SEARCH_DELAY))
+
+
+def _iter_spontaneous_and_portal_search_links(session, seen):
+    """Discover spontaneous Ausbildungsbetriebe by target city/region and StepStone/Indeed/Monster/IHK links."""
+    queries = []
+    for city in SPONTANEOUS_CITIES:
+        for role_term in ("Hotelfachfrau", "Systemgastronomie", "Einzelhandel", "Spedition", "Großhandel", "Industriekauffrau"):
+            queries.append(f'Ausbildungsbetrieb "{role_term}" "{city}" Karriere OR Bewerbung')
+    for dom in ("stepstone.de", "de.indeed.com", "monster.de", "ihk-lehrstellenboerse.de", "make-it-in-germany.com"):
+        for q in AZUBI_DE_QUERIES:
+            queries.append(f'site:{dom} "Ausbildung" "{q}"')
+
+    random.shuffle(queries)
+    for query in queries[:90]:
+        if scrape_time_exhausted():
+            return
+        try:
+            results = _bing_search(session, query, count=10)
+            new_on_query = 0
+            for url, _, _ in results:
+                norm = _normalize_external_url(url)
+                if not norm or norm in seen:
+                    continue
+                if any(b in host_of(norm) for b in ("bing.com", "google.", "facebook.com", "instagram.com", "youtube.com", "wikipedia.org")):
+                    continue
+                seen.add(norm)
+                new_on_query += 1
+                yield norm
+            if new_on_query:
+                print(f"[+] recherche portails & Ausbildungsbetriebe ({query[:48]}...): +{new_on_query} liens")
+        except requests.RequestException:
+            pass
+        time.sleep(random.uniform(*SEARCH_DELAY))
+
+
 def _iter_external_links():
-    """Discover Ausbildung offers directly from accessible German portals (no Bing/DDG CAPTCHA)."""
+    """Discover Ausbildung offers across all target portals and regional Ausbildungsbetriebe."""
     session = make_session()
     seen = set()
-    print("[*] Collecte directe sur portails Ausbildung (ausbildung.de + azubiyo.de)...")
-    yield from _iter_ausbildung_de_links(session, seen)
-    yield from _iter_azubiyo_links(session, seen)
+    print(
+        "[*] Collecte multi-portails (ausbildung.de, azubiyo.de, azubi.de, aubi-plus.de, "
+        "go-ausbildung.de, azubistelle.de, jobware.de, xing.com, linkedin.com, IHK + Ausbildungsbetriebe)..."
+    )
+    generators = [
+        _iter_ausbildung_de_links(session, seen),
+        _iter_azubiyo_links(session, seen),
+        _iter_azubi_de_links(session, seen),
+        _iter_aubi_plus_links(session, seen),
+        _iter_go_ausbildung_links(session, seen),
+        _iter_azubistelle_links(session, seen),
+        _iter_jobware_links(session, seen),
+        _iter_xing_links(session, seen),
+        _iter_linkedin_links(session, seen),
+        _iter_ihk_stellenmarkt_links(session, seen),
+        _iter_spontaneous_and_portal_search_links(session, seen),
+    ]
+    active = list(generators)
+    while active and not scrape_time_exhausted():
+        next_active = []
+        for gen in active:
+            if scrape_time_exhausted():
+                break
+            try:
+                yield next(gen)
+                next_active.append(gen)
+            except StopIteration:
+                pass
+        active = next_active
 
 
 def iter_collected_links():
@@ -1354,6 +1684,12 @@ def parse_external_detail(link):
     try:
         r = session.get(link, timeout=DETAIL_TIMEOUT, allow_redirects=True)
         r.raise_for_status()
+        final_url = r.url or link
+        if "arbeitsagentur.de/jobsuche/jobdetail/" in final_url:
+            m_ref = re.search(r"/jobsuche/jobdetail/([^/?#]+)", final_url)
+            if m_ref:
+                token = json.dumps({"refnr": m_ref.group(1), "published": ""}, separators=(",", ":"))
+                return parse_detail("aaapi://" + base64.urlsafe_b64encode(token.encode()).decode())
         soup = BeautifulSoup(r.text, "html.parser")
         text = clean(soup.get_text(" ", strip=True))
         h1 = soup.find("h1")

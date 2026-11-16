@@ -610,6 +610,7 @@ function doPost(e) {
     const intitule = String(rawData.intitule || "").trim();
     const roleCible = String(rawData.role_cible || "").trim();
     const lien = String(rawData.lien || "").trim();
+    const lieu = String(rawData.lieu || "").trim();
 
     if (type === "RELANCE") {
       return ContentService
@@ -622,12 +623,12 @@ function doPost(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
 
-    const generated = genererEmailCandidature(entreprise, intitule, roleCible, lien);
+    const generated = genererEmailCandidature(entreprise, intitule, roleCible, lien, lieu);
     return ContentService
       .createTextOutput(JSON.stringify({
         status: "success", action: "generate_email", type: "INITIAL",
         titre_poste: generated.titrePoste,
-        subject: "Bewerbung um einen Ausbildungsplatz als " + generated.titrePoste + " – " + CONFIG.NOM,
+        subject: generated.sujet || ("Bewerbung um einen Ausbildungsplatz als " + generated.titrePoste + " – " + CONFIG.NOM),
         html_body: generated.body
       }))
       .setMimeType(ContentService.MimeType.JSON);
@@ -1316,9 +1317,9 @@ function getSignatureHTML() {
   <tr>
     <td>
       <strong style="font-size: 14px; color: #1a1a1a;">${CONFIG.NOM}</strong><br>
-      <span style="color: #666;">Bewerberin – Ausbildung in Deutschland</span><br><br>
+      <span style="color: #666;">Bewerberin – Ausbildung in Deutschland (Sprachniveau Deutsch B1/B2 · Englisch C1 · Französisch C1 · Arabisch)</span><br><br>
       📧 <a href="mailto:${Session.getEffectiveUser().getEmail() || CONFIG.EMAIL}" style="color: #1a73e8;">${Session.getEffectiveUser().getEmail() || CONFIG.EMAIL}</a><br>
-      📞 ${CONFIG.TEL}<br>
+      📞 ${CONFIG.TEL} (auch per WhatsApp erreichbar)<br>
       🔗 <a href="https://${CONFIG.LINKEDIN}" style="color: #1a73e8;">${CONFIG.LINKEDIN}</a>
     </td>
   </tr>
@@ -1557,55 +1558,59 @@ function normaliserEntrepriseEmail_(value) {
   return original;
 }
 
+function extraireVillePropre_(lieu) {
+  const raw = String(lieu || "").trim();
+  if (!raw) return "";
+  const firstPart = raw.split(",")[0].replace(/^\d{5}\s*/, "").replace(/\([^)]*\)/g, "").trim();
+  if (!firstPart || /^(deutschland|allemagne|germany|bundesweit)$/i.test(firstPart)) return "";
+  return firstPart;
+}
+
 function getNaturalFitParagraph_(specialite, signals, entreprise) {
   const signalText = signals.length
     ? signals.slice(0, 3).join(", ")
     : "";
 
-  const company = entreprise && entreprise !== "Unternehmen Deutschland"
-    ? " bei " + escapeHtml_(entreprise)
-    : "";
-
   const base = {
     hotelfachfrau:
-      "Die Hotellerie kenne ich bereits aus meiner Tätigkeit bei HBX Group / Hotelbeds. Dort betreute ich internationale B2B-Geschäftspartner aus dem Hotel- und Travel-Bereich und arbeitete täglich auf Arabisch, Französisch und Englisch. Dadurch bringe ich bereits Erfahrung mit Kunden, Geschäftspartnern und kaufmännischen Abläufen mit.",
+      "Im Unterschied zu klassischen Schulabgängerinnen bringe ich bereits mehrjährige Berufserfahrung in der internationalen Hotellerie- und Reisebranche mit. Bei <strong>HBX Group / Hotelbeds</strong> betreute ich ein Portfolio von über 600 B2B-Partnern im Hotel- und Travel-Bereich und arbeitete täglich auf <strong>Englisch (C1), Französisch (C1) und Arabisch</strong> mit internationalen Gästen und Geschäftspartnern. Dadurch bin ich mit Reservierungsprozessen, Gästebetreuung, Reklamationsmanagement und kaufmännischen Abläufen bereits bestens vertraut und ab dem ersten Tag im Ausbildungsbetrieb voll einsatzfähig.",
     hotelmanagement:
-      "Durch meine Tätigkeit bei HBX Group / Hotelbeds kenne ich die Hotel- und Travel-Branche bereits aus einem internationalen B2B-Umfeld. Kundenbetreuung, Kommunikation mit Geschäftspartnern und kaufmännische Abläufe gehören zu meiner bisherigen Erfahrung.",
+      "Im Unterschied zu klassischen Schulabgängerinnen bringe ich bereits fundierte Praxiserfahrung aus der internationalen Hotel- und Travel-Tech-Branche mit. Bei <strong>HBX Group / Hotelbeds</strong> verantwortete ich die kaufmännische Betreuung von über 600 B2B-Partnerkonten, inklusive Vertrags- und Reservierungskoordination, Umsatzentwicklung und mehrsprachiger Kommunikation auf <strong>Englisch (C1), Französisch (C1) und Arabisch</strong>. Diese Kombination aus Hotellerie-Verständnis und kaufmännischer Routine möchte ich gezielt in Ihrem Haus einbringen.",
     systemgastronomie:
-      "Ich bringe über fünf Jahre Erfahrung in Kundenservice, Vertrieb und strukturierten Arbeitsabläufen mit. Besonders wichtig sind mir zuverlässiger Service, gute Kommunikation und ein professioneller Umgang mit Kunden und Kollegen.",
+      "Im Unterschied zu klassischen Schulabgängerinnen verfüge ich bereits über mehr als fünf Jahre Berufserfahrung in strukturierten Service-, Vertriebs- und Organisationsprozessen. Hohe Kundenorientierung, Belastbarkeit im Tagesgeschäft, Waren- und Bestandsüberwachung sowie verlässliche Teamarbeit gehören zu meiner täglichen Praxis – ergänzt durch sichere Kommunikation auf Deutsch, Englisch (C1) und Französisch (C1).",
     einzelhandel:
-      "Kundenberatung und Verkauf gehören seit mehreren Jahren zu meiner Berufserfahrung. Ich habe sowohl im B2B- als auch im B2C-Umfeld gearbeitet und bringe zusätzlich Erfahrung mit Auftragsabwicklung und kaufmännischen Aufgaben mit.",
+      "Im Unterschied zu klassischen Schulabgängerinnen bringe ich über fünf Jahre praktische Berufserfahrung in Kundenberatung, aktivem Verkauf (B2C & B2B), Bestandsüberwachung und Auftragsabwicklung mit. Für meine Beratungsqualität und Abschlussstärke wurde ich bereits als Top-Verkäuferin ausgezeichnet und arbeite routiniert mit Warenwirtschafts- und Kassensystemen sowie Excel und ERP-Software (Sage).",
     spedition:
-      "Logistik und Koordination kenne ich bereits aus meiner Berufserfahrung. Bei Helpdesk ForYou koordinierte ich die Einsatzplanung von über 100 Fahrern und Mitarbeitenden. Heute arbeite ich außerdem mit Beschaffung, Logistik, Bestandsüberwachung und Auftragsabwicklung.",
+      "Im Unterschied zu klassischen Schulabgängerinnen verfüge ich bereits über konkrete Praxiserfahrung in Disposition, Logistik und kaufmännischer Auftragsabwicklung. Bei Helpdesk ForYou koordinierte ich die tägliche Einsatz- und Tourenplanung von über 100 Fahrern; zudem arbeite ich routiniert mit Beschaffung, Lieferantenkoordination, Bestandsüberwachung sowie Excel und dem ERP-System Sage – ergänzt durch verhandlungssicheres Englisch (C1) und Französisch (C1) für internationale Transportpartner.",
     handel:
-      "Ich bringe über fünf Jahre kaufmännische Erfahrung in Kundenbetreuung, Vertrieb und operativen Abläufen mit. In meiner aktuellen Tätigkeit arbeite ich unter anderem mit Beschaffung, Lieferanten, Bestandsüberwachung und Auftragsabwicklung sowie mit Excel und Sage.",
+      "Im Unterschied zu klassischen Schulabgängerinnen bringe ich über fünf Jahre kaufmännische Berufserfahrung im B2B-Vertrieb, Einkauf und in der Auftragsabwicklung mit. In meiner täglichen Praxis arbeite ich mit Lieferantenmanagement, Beschaffung, Bestandsüberwachung, Rechnungsprüfung sowie mit Excel und dem ERP-System Sage – kombiniert mit verhandlungssicherem Englisch (C1), Französisch (C1) und Arabisch für den internationalen Handel.",
     industrie:
-      "Durch meine bisherige kaufmännische Berufserfahrung kenne ich bereits Beschaffung, Auftragsabwicklung, Kundenbetreuung und strukturierte administrative Prozesse. Aktuell arbeite ich unter anderem mit Lieferanten, Beständen, Rechnungen, Excel und Sage.",
+      "Im Unterschied zu klassischen Schulabgängerinnen verfüge ich über mehr als fünf Jahre kaufmännische Berufserfahrung in Beschaffung, Auftragsabwicklung, Rechnungsprüfung und B2B-Kundenbetreuung. Ich arbeite täglich mit Lieferanten, Beständen, kaufmännischer Dokumentation sowie Excel und dem ERP-System Sage und kann mich daher sehr schnell und selbstständig in Ihre industriellen Geschäftsprozesse einarbeiten.",
     buero:
-      "Organisation, Kommunikation und strukturierte Bearbeitung gehören seit mehreren Jahren zu meinem Arbeitsalltag. Durch meine Erfahrung in Kundenbetreuung, Vertrieb und kaufmännischen Abläufen kann ich mich schnell in neue administrative Prozesse einarbeiten.",
+      "Im Unterschied zu klassischen Schulabgängerinnen bringe ich über fünf Jahre praktische Erfahrung in kaufmännischer Administration, Auftragsbearbeitung, Terminkoordination und professioneller Kundenkommunikation mit. Der sichere Umgang mit MS Office (insbesondere Excel), CRM-Systemen und der ERP-Software Sage gehört ebenso zu meinem Alltag wie mehrsprachige Korrespondenz auf Deutsch, Englisch (C1) und Französisch (C1).",
     tourismus:
-      "Die Reisebranche kenne ich bereits aus meiner Tätigkeit bei HBX Group / Hotelbeds. Dort arbeitete ich mit internationalen B2B-Geschäftspartnern aus dem Hotel- und Travel-Bereich und konnte meine Erfahrung in Kundenbetreuung, Kommunikation und kaufmännischen Abläufen vertiefen.",
+      "Im Unterschied zu klassischen Schulabgängerinnen kenne ich die Tourismusbranche bereits aus meiner mehrjährigen Tätigkeit bei <strong>HBX Group / Hotelbeds</strong>. Dort betreute ich über 600 internationale B2B-Reisepartner und sammelte umfassende Erfahrung in Reservierung, Kundenberatung, Partnerbetreuung und mehrsprachiger Kommunikation auf Englisch (C1), Französisch (C1) und Arabisch.",
     koch:
-      "Ich bringe viel Erfahrung im Umgang mit Menschen, Service und strukturierten Arbeitsabläufen mit. Diese Stärken möchte ich nun in einem praktischen Ausbildungsberuf weiterentwickeln und professionelle Küchenabläufe von Grund auf erlernen.",
+      "Ich bringe über fünf Jahre Berufserfahrung in dienstleistungsorientierten und klar strukturierten Arbeitsabläufen mit. Belastbarkeit, Sorgfalt, Teamgeist und hohe Qualitätsansprüche zeichnen meine Arbeitsweise aus und bilden meine Grundlage für eine fundierte praktische Ausbildung in Ihrer Küche.",
     baecker:
-      "Sorgfalt, Zuverlässigkeit und Kundenorientierung gehören zu meiner bisherigen Berufserfahrung. Die Verbindung aus handwerklicher Arbeit, Qualität und direktem Kundenkontakt spricht mich besonders an.",
+      "Sorgfalt, Zuverlässigkeit, Qualitätsbewusstsein und Freude am direkten Kundenkontakt gehören seit über fünf Jahren zu meiner beruflichen Praxis. Diese Stärken möchte ich mit großer Motivation in eine langfristige Ausbildung in Ihrem Betrieb einbringen.",
     fachverkaeufer_lebensmittel:
-      "Kundenberatung und Verkauf gehören bereits zu meiner Berufserfahrung. Ich bringe einen sicheren Umgang mit Kunden, Kommunikationsstärke und Erfahrung im Vertrieb mit und möchte diese Stärken nun gezielt im Lebensmittelhandwerk einsetzen."
+      "Kundenberatung, aktiver Verkauf und gepflegte Warenpräsentation gehören seit über fünf Jahren zu meiner Berufserfahrung. Ich bringe einen herzlichen, professionellen Umgang mit Kunden, hohe Zuverlässigkeit und kaufmännisches Verständnis für eine erfolgreiche Ausbildung in Ihrem Betrieb mit."
   };
 
   let paragraph = base[specialite] || base.buero;
 
   if (signalText) {
     paragraph += " " +
-      "Besonders angesprochen haben mich in Ihrer Ausschreibung " +
+      "Besonders angesprochen haben mich in Ihrer Ausschreibung die Schwerpunkte <strong>" +
       escapeHtml_(signalText) +
-      ". Genau diese Verbindung aus Kundenkontakt, Organisation und praktischem Arbeiten passt gut zu meiner bisherigen Erfahrung.";
+      "</strong>, die sich direkt mit meiner bisherigen Praxiserfahrung decken.";
   }
 
   return paragraph;
 }
 
-function genererEmailCandidature(entreprise, intitule, roleCible, lien) {
+function genererEmailCandidature(entreprise, intitule, roleCible, lien, lieu) {
   entreprise = normaliserEntrepriseEmail_(entreprise);
   const specialite = detecterSpecialite(intitule, roleCible);
   const titrePoste = getTitreAusbildung(specialite);
@@ -1613,34 +1618,41 @@ function genererEmailCandidature(entreprise, intitule, roleCible, lien) {
     entreprise &&
     entreprise.trim() &&
     entreprise.trim() !== "Unternehmen Deutschland";
+  const ville = extraireVillePropre_(lieu);
 
   const context = fetchOfferContext_(lien);
   const signals = extractOfferSignals_(context, specialite);
 
+  const lieuTexte = ville ? " am Standort <strong>" + escapeHtml_(ville) + "</strong>" : "";
   const intro = entrepriseConnue
-    ? "Ihre Ausschreibung für einen Ausbildungsplatz als <strong>" +
+    ? "mit großem Interesse bewerbe ich mich um den ausgeschriebenen Ausbildungsplatz als <strong>" +
       escapeHtml_(titrePoste) + "</strong> bei <strong>" +
-      escapeHtml_(entreprise.trim()) + "</strong> hat mich besonders angesprochen."
-    : "Ihre Ausschreibung für einen Ausbildungsplatz als <strong>" +
-      escapeHtml_(titrePoste) + "</strong> hat mich besonders angesprochen.";
+      escapeHtml_(entreprise.trim()) + "</strong>" + lieuTexte + "."
+    : "mit großem Interesse bewerbe ich mich um Ihren ausgeschriebenen Ausbildungsplatz als <strong>" +
+      escapeHtml_(titrePoste) + "</strong>" + lieuTexte + ".";
 
   const fit = getNaturalFitParagraph_(specialite, signals, entreprise);
 
   const relocation =
-    "Da ich mich derzeit aus Marokko bewerbe, organisiere ich die notwendigen Schritte für Visum, Einreise und Unterlagen selbstständig.";
+    "<strong>Zu meiner aktuellen Situation und Einreiseplanung:</strong> Ich lebe derzeit in Casablanca (Marokko) und habe meine Übersiedlung nach Deutschland bereits konkret vorbereitet. Meine Schul- und Hochschulabschlüsse (Abitur sowie Bachelor/Licence in Wirtschaft) sind vollständig übersetzt und beglaubigt, das <strong>telc Deutsch B1-Zertifikat</strong> liegt vor (aktuell befinde ich mich im intensiven B2-Training), und meine Finanzierung ist gesichert. Sobald ein Ausbildungsvertrag vorliegt, beantrage ich das Ausbildungsvisum (§ 16a AufenthG) eigenständig bei der Deutschen Botschaft; auf Wunsch unterstützen Sie gerne auch die <strong>IHK</strong> oder der <strong>Arbeitgeberservice der Bundesagentur für Arbeit (ZAV)</strong> kostenfrei bei der zügigen Vorabzustimmung.";
+
+  const sujet = entrepriseConnue
+    ? "Bewerbung um einen Ausbildungsplatz als " + titrePoste + " bei " + entreprise.trim() + " – " + CONFIG.NOM + " (B1/B2 · 5+ J. Berufserfahrung)"
+    : "Bewerbung um einen Ausbildungsplatz als " + titrePoste + " – " + CONFIG.NOM + " (B1/B2 · 5+ J. Berufserfahrung)";
 
   const body = [
     "<p>Sehr geehrte Damen und Herren,</p>",
     "<p>" + intro + "</p>",
     "<p>" + fit + "</p>",
     "<p>" + relocation + "</p>",
-    "<p>Deutsch B1 habe ich abgeschlossen und bereite mich aktuell auf B2 vor. Meine vollständigen Bewerbungsunterlagen finden Sie im Anhang.</p>",
-    "<p>Gerne stelle ich mich Ihnen auch in einem kurzen Videogespräch persönlich vor.</p>",
+    "<p>Um Ihnen einen unkomplizierten ersten Eindruck von meiner Persönlichkeit, meiner Motivation und meinen Deutschkenntnissen zu ermöglichen, stehe ich Ihnen jederzeit kurzfristig für ein <strong>10-minütiges Kennenlerngespräch per Video (Teams, Zoom oder WhatsApp)</strong> sowie für ein <strong>Online-Probearbeiten</strong> zur Verfügung.</p>",
+    "<p>Meine vollständigen und geordneten Bewerbungsunterlagen (Anschreiben, Lebenslauf, Zertifikate und Zeugnisse) finden Sie im beigefügten PDF-Dossier.</p>",
+    "<p>Über Ihre Rückmeldung und die Gelegenheit zu einem persönlichen Gespräch freue ich mich sehr.</p>",
     "<p>Mit freundlichen Grüßen</p>",
     getSignatureHTML()
   ].join("\n");
 
-  return { titrePoste, body };
+  return { titrePoste, sujet, body };
 }
 
 function genererEmailRelance(entreprise, intitule, roleCible) {
@@ -1884,10 +1896,15 @@ function traiterAusbildungCandidatures() {
           continue;
         }
 
-        const { titrePoste, body } = genererEmailCandidature(
-          entreprise, intitule, roleCible, String(row[COL.LIEN] || "").trim()
+        const generated = genererEmailCandidature(
+          entreprise,
+          intitule,
+          roleCible,
+          String(row[COL.LIEN] || "").trim(),
+          String(row[COL.LIEU] || "").trim()
         );
-        const sujet = "Bewerbung um einen Ausbildungsplatz als " + titrePoste + " – " + CONFIG.NOM;
+        const { titrePoste, body } = generated;
+        const sujet = generated.sujet || ("Bewerbung um einen Ausbildungsplatz als " + titrePoste + " – " + CONFIG.NOM);
 
         try {
           GmailApp.sendEmail(emailCible, sujet, "", {

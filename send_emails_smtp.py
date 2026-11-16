@@ -182,6 +182,7 @@ def generer_email_depuis_apps_script(item: dict, type_envoi: str):
             "intitule": item.get("intitule", ""),
             "role_cible": item.get("role_cible", ""),
             "lien": item.get("lien", ""),
+            "lieu": item.get("lieu", ""),
         },
         label="generate_email",
     )
@@ -200,15 +201,15 @@ def generer_email_candidature(specialite: str):
 
 <p>{motivation}</p>
 
-<p>Deutsch B1 habe ich abgeschlossen und bereite mich aktuell auf B2 vor. Meine vollständigen Bewerbungsunterlagen finden Sie im Anhang.</p>
+<p><strong>Zu meiner aktuellen Situation und Einreiseplanung:</strong> Ich lebe derzeit in Casablanca (Marokko) und habe meine Übersiedlung nach Deutschland bereits konkret vorbereitet. Meine Schul- und Hochschulabschlüsse (Abitur sowie Bachelor/Licence in Wirtschaft) sind vollständig übersetzt und beglaubigt, das <strong>telc Deutsch B1-Zertifikat</strong> liegt vor (aktuell befinde ich mich im intensiven B2-Training), und meine Finanzierung ist gesichert. Sobald ein Ausbildungsvertrag vorliegt, beantrage ich das Ausbildungsvisum (§ 16a AufenthG) eigenständig bei der Deutschen Botschaft; auf Wunsch unterstützen Sie gerne auch die <strong>IHK</strong> oder der <strong>Arbeitgeberservice der Bundesagentur für Arbeit (ZAV)</strong> kostenfrei bei der zügigen Vorabzustimmung.</p>
 
-<p>Über die Gelegenheit per Videogespräch vorzustellen, würde ich mich sehr freuen.</p>
+<p>Um Ihnen einen unkomplizierten ersten Eindruck von meiner Persönlichkeit, meiner Motivation und meinen Deutschkenntnissen zu ermöglichen, stehe ich Ihnen jederzeit kurzfristig für ein <strong>10-minütiges Kennenlerngespräch per Video (Teams, Zoom oder WhatsApp)</strong> sowie für ein <strong>Online-Probearbeiten</strong> zur Verfügung. Meine vollständigen Bewerbungsunterlagen finden Sie im Anhang.</p>
 
 <p>Mit freundlichen Grüßen</p>
 
 {get_signature_html()}
 """.strip()
-    sujet = f"Bewerbung um einen Ausbildungsplatz als {titre_poste} – {CONFIG['NOM']}"
+    sujet = f"Bewerbung um einen Ausbildungsplatz als {titre_poste} – {CONFIG['NOM']} (B1/B2 · 5+ J. Berufserfahrung)"
     return sujet, body
 
 
