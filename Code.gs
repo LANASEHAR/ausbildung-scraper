@@ -942,26 +942,31 @@ function doPost(e) {
         duplicateEmails++;
       }
 
+      const clipCell_ = (v, maxLen) => {
+        const s = String(v == null ? "" : v);
+        return s.length > maxLen ? s.slice(0, maxLen) : s;
+      };
+
       rowsToAppend.push([
-  job.date_detection || new Date().toISOString(), // A
-  job.statut || "NOUVEAU",                       // B
-  job.role_cible || "",                          // C
-  job.intitule || "",                            // D
-  job.entreprise || "",                          // E
-  job.lieu || "Deutschland (Allemagne)",        // F
-  email || "",                                   // G
-  job.site_entreprise || "",                     // H
-  job.source || "Scraper Cloud Ausbildung",      // I
-  job.lien || "",                                // J
-  jobId,                                         // K
-  "",                                            // L
-  "",                                            // M
-  0,                                             // N
-  "",                                            // O
-  "",                                            // P
-  job.date_offre || "",                          // Q
-  Number(job.prioritaet_region || 0),            // R
-  Number(job.prioritaet_ausbildung || 0)         // S
+  clipCell_(job.date_detection || new Date().toISOString(), 100), // A
+  clipCell_(job.statut || "NOUVEAU", 64),                         // B
+  clipCell_(job.role_cible || "", 250),                           // C
+  clipCell_(job.intitule || "", 500),                             // D
+  clipCell_(job.entreprise || "", 250),                           // E
+  clipCell_(job.lieu || "Deutschland (Allemagne)", 250),          // F
+  clipCell_(email || "", 320),                                    // G
+  clipCell_(job.site_entreprise || "", 500),                      // H
+  clipCell_(job.source || "Scraper Cloud Ausbildung", 200),       // I
+  clipCell_(job.lien || "", 2000),                                // J
+  clipCell_(jobId, 200),                                          // K
+  "",                                                             // L
+  "",                                                             // M
+  0,                                                              // N
+  "",                                                             // O
+  "",                                                             // P
+  clipCell_(job.date_offre || "", 64),                            // Q
+  Number(job.prioritaet_region || 0),                             // R
+  Number(job.prioritaet_ausbildung || 0)                          // S
 ]);
 
       existingIds.add(jobId);

@@ -2659,7 +2659,38 @@ def post_json(payload, label):
     raise RuntimeError(f"Webhook impossible après {WEBHOOK_RETRIES} tentatives: {last_error}")
 
 
+def _sanitize_job_for_sheet(job):
+    """Ensure all string fields fit comfortably within Google Sheets' 50,000-char cell limit."""
+    if not isinstance(job, dict):
+        return job
+    limits = {
+        "date_detection": 64,
+        "date_offre": 64,
+        "statut": 64,
+        "role_cible": 200,
+        "intitule": 500,
+        "entreprise": 250,
+        "lieu": 250,
+        "emails_rh": 320,
+        "site_entreprise": 500,
+        "source": 200,
+        "lien": 2000,
+        "id": 200,
+        "region_cible": 200,
+        "description": 8000,
+    }
+    cleaned = dict(job)
+    for key, max_len in limits.items():
+        if key in cleaned and cleaned[key] is not None:
+            val = str(cleaned[key])
+            if len(val) > max_len:
+                cleaned[key] = val[:max_len]
+    return cleaned
+
+
 def send_to_sheet(jobs):
+    if isinstance(jobs, list):
+        jobs = [_sanitize_job_for_sheet(j) for j in jobs]
     return post_json(jobs, "Envoi initial vers Google Sheets")
 
 
